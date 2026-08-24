@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.venv/
+
+# Environment variables / secrets
+.env
+
+# Generated data
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/*.xlsx
+data/*.csv
+data/*.ics
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Pytest / Ruff
+.pytest_cache/
+.ruff_cache/
