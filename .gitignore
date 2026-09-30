@@ -15,6 +15,13 @@ data/*.sqlite3
 data/*.xlsx
 data/*.csv
 data/*.ics
+data/*.json
+/output/
+/outputs/
+
+# Temporary files
+*.tmp
+*.temp
 
 # macOS
 .DS_Store
