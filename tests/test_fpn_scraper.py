@@ -19,6 +19,7 @@ from waterpolo.scraper.fpn import (
 from waterpolo.scraper.fpn.scraper import (
     filter_team_games,
     find_team_identities,
+    map_fpn_category,
     parse_competition,
     parse_game,
     to_matches,
@@ -176,6 +177,36 @@ def test_to_matches_maps_unknown_competition_category() -> None:
     )
 
     assert to_matches([game], season="2025/26")[0].category is MatchCategory.UNKNOWN
+
+
+@pytest.mark.parametrize(
+    ("raw_category", "display_name", "expected"),
+    [
+        ("senior", "CAMPEONATO PORTUGAL A2 MASCULINOS", MatchCategory.SENIOR),
+        (" Senior ", "qualquer competição", MatchCategory.SENIOR),
+        ("junior", "CAMPEONATO NACIONAL JUNIORES", MatchCategory.JUNIOR),
+        ("under15", "CAMPEONATO INFANTIS", MatchCategory.INFANTIS),
+        ("under15", "CAMPEONATO JUVENIS", MatchCategory.JUVENIS),
+        ("under15", "CAMPEONATO SUB 15", MatchCategory.UNKNOWN),
+        ("under15", "INFANTIS E JUVENIS", MatchCategory.UNKNOWN),
+        (None, "CAMPEONATO INFANTIS", MatchCategory.INFANTIS),
+        ("", "CAMPEONATO INFANTIS", MatchCategory.INFANTIS),
+        ("unknown", "CAMPEONATO JUVENIS", MatchCategory.JUVENIS),
+        ("under15", "campeonato infantis", MatchCategory.INFANTIS),
+        ("under15", "CAMPEONATO PORTUGAL INFANTIL 2025-2026", MatchCategory.INFANTIS),
+        ("under15", "Campeonato   Infantis", MatchCategory.INFANTIS),
+        ("under15", "CAMPEONATO PORTUGAL JUVENIL 2025-2026", MatchCategory.JUVENIS),
+        ("under15", "Campeonato Juvénis", MatchCategory.JUVENIS),
+        ("under15", "CAMPEONATO PORTUGAL JUVENIS 2025-2026", MatchCategory.JUVENIS),
+        ("junior", "CAMPEONATO PORTUGAL JUNIOR 2025-2026", MatchCategory.JUNIOR),
+        ("junior", "CAMPEONATO PORTUGAL JUNIORES 2025-2026", MatchCategory.JUNIOR),
+        ("junior", "CAMPEONATO PORTUGAL JÚNIOR 2025-2026", MatchCategory.JUNIOR),
+    ],
+)
+def test_map_fpn_category(
+    raw_category: str | None, display_name: str, expected: MatchCategory
+) -> None:
+    assert map_fpn_category(raw_category, display_name) is expected
 
 
 def test_future_zero_zero_is_scheduled_without_scores() -> None:

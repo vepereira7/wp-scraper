@@ -22,7 +22,21 @@ class MatchCategory(str, Enum):
     U16 = "U16"
     U18 = "U18"
     SENIOR = "SENIOR"
+    JUNIOR = "JUNIOR"
+    JUVENIS = "JUVENIS"
+    INFANTIS = "INFANTIS"
     UNKNOWN = "UNKNOWN"
+
+
+def format_match_category(category: MatchCategory) -> str:
+    """Return the Portuguese display label for a normalized category."""
+    return {
+        MatchCategory.SENIOR: "Seniores",
+        MatchCategory.JUNIOR: "Juniores",
+        MatchCategory.JUVENIS: "Juvenis",
+        MatchCategory.INFANTIS: "Infantis",
+        MatchCategory.UNKNOWN: "Unknown",
+    }.get(category, category.value)
 
 
 class MatchStatus(str, Enum):

@@ -66,6 +66,17 @@ Mais detalhes em [docs/model.md](docs/model.md).
 
 O contrato completo está em [docs/output-contract.md](docs/output-contract.md).
 
+## Calendário ICS
+
+O ficheiro ICS pode ser importado manualmente, mas isso pode criar uma cópia
+estática. Para atualizações contínuas, publique o ficheiro num URL fixo e adicione
+esse URL como calendário subscrito. Quando o script regenerar o ficheiro no mesmo
+caminho/URL, os clientes poderão atualizar os eventos através do UID estável de
+cada jogo, em vez de os tratarem como eventos novos. A atualização não é
+instantânea: depende da frequência de atualização de cada aplicação de calendário.
+O `SEQUENCE` fica em zero enquanto não existir histórico para comparar exports;
+no futuro poderá ser incrementado ao comparar a versão anterior com a nova.
+
 ## Cliente FPN ArenaDisplay
 
 O cliente mantém uma ligação `httpx` reutilizável, resolve a competição pelo
