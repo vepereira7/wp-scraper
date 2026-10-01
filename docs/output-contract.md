@@ -14,6 +14,9 @@ Cada jogo exporta os campos públicos do modelo: `external_id`, `source`,
 `location`, `score_home`, `score_away` e `status`. Enums, datas e horas são
 serializados como strings.
 
+`location` é opcional. Quando a fonte não fornece o local, o campo é mantido no
+output com valor `null`.
+
 ## Exemplo
 
 ```json
@@ -33,7 +36,7 @@ serializados como strings.
       "away": "Vitória SC",
       "date": "2026-10-04",
       "time": "15:00:00",
-      "location": "Piscina Municipal",
+      "location": null,
       "score_home": null,
       "score_away": null,
       "status": "SCHEDULED"

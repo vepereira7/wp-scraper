@@ -4,8 +4,9 @@ Projeto Python independente para recolher calendários de polo aquático de font
 como FPN e ANNP, normalizar jogos e produzir outputs estáveis. Este repositório é
 separado da aplicação WP Stats e não depende dela.
 
-Nesta fase, o projeto define o modelo e o contrato JSON. Ainda não executa scraping
-real nem integra com serviços externos.
+O projeto define um modelo e um contrato JSON normalizados. A integração FPN usa
+diretamente a API pública do ArenaDisplay, sem automação de browser, e não integra
+com serviços externos da aplicação WP Stats.
 
 ## Estrutura
 
@@ -33,8 +34,9 @@ uv run python -m waterpolo.main
 
 ## Modelo normalizado
 
-Um `Match` identifica a fonte, época e competição; contém equipas, data, hora e
-local; e pode conter resultado, estado, URL de origem e dados brutos de auditoria.
+Um `Match` identifica a fonte, época e competição; contém equipas, data e hora; e
+pode conter local, resultado, estado, URL de origem e dados brutos de auditoria.
+O local é opcional e permanece `null` quando a fonte não o fornece.
 As fontes, categorias e estados conhecidos são enums. Competições continuam como
 texto livre para acomodar alterações das fontes.
 
@@ -63,6 +65,24 @@ Mais detalhes em [docs/model.md](docs/model.md).
 ```
 
 O contrato completo está em [docs/output-contract.md](docs/output-contract.md).
+
+## Cliente FPN ArenaDisplay
+
+O cliente mantém uma ligação `httpx` reutilizável, resolve a competição pelo
+domínio ArenaDisplay e normaliza os jogos. O filtro do FOCA descobre primeiro a
+identidade devolvida pela API; nenhum UUID de equipa está fixo no código.
+
+```python
+from waterpolo.scraper.fpn import FPNArenaClient
+
+with FPNArenaClient() as client:
+    competition = client.get_competition("po02_25-26")
+    games = client.get_games(competition.id)
+    foca_games = client.get_team_games(domain="po02_25-26", team="FOCA")
+```
+
+O código de produção não usa Playwright. `inspect_fpn_arena.py` é apenas uma
+ferramenta de diagnóstico da atividade de rede do frontend.
 
 ## Roadmap
 

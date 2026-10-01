@@ -51,7 +51,7 @@ class Match(BaseModel):
 
     date: date
     time: time
-    location: str
+    location: str | None = None
 
     score_home: int | None = None
     score_away: int | None = None
@@ -66,7 +66,6 @@ class Match(BaseModel):
         "competition",
         "home",
         "away",
-        "location",
     )
     @classmethod
     def validate_required_text(cls, value: str) -> str:

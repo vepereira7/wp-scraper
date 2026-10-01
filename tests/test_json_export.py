@@ -47,3 +47,11 @@ def test_export_includes_raw_when_requested() -> None:
     assert payload["matches"][0]["raw"] == {"source_key": "source value"}
     assert payload["matches"][0]["date"] == "2026-10-04"
     assert payload["matches"][0]["time"] == "15:00:00"
+
+
+def test_export_preserves_missing_location_as_null() -> None:
+    match = make_match().model_copy(update={"location": None})
+
+    payload = export_matches_json([match])
+
+    assert payload["matches"][0]["location"] is None

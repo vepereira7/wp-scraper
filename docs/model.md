@@ -17,7 +17,7 @@ consumidores das diferenças entre fontes e é independente da aplicação WP St
 | Equipas | `away` | `str` | Sim | Equipa visitante |
 | Horário | `date` | `date` | Sim | Data do jogo |
 | Horário | `time` | `time` | Sim | Hora do jogo |
-| Horário | `location` | `str` | Sim | Local do jogo |
+| Horário | `location` | `str \| None` | Não | Local do jogo; pode faltar na fonte |
 | Resultado | `score_home` | `int \| None` | Não | Resultado da equipa da casa |
 | Resultado | `score_away` | `int \| None` | Não | Resultado da equipa visitante |
 | Estado | `status` | `MatchStatus` | Não | Por omissão, `SCHEDULED` |
@@ -39,7 +39,10 @@ os enums.
   `<fonte>-<id-da-fonte>`.
 - A fonte é fornecida pelo parser ou função e não tem de existir no HTML.
 - A época pode ser derivada pelo scraper, mas é obrigatória no modelo.
-- Data, hora e local são obrigatórios nesta fase.
+- Data e hora são obrigatórias nesta fase. O local é opcional porque a API
+  ArenaDisplay pode devolvê-lo como `null` ou omiti-lo.
+- Quando o local não é fornecido pela fonte, mantém-se `None`; não é inventado
+  um valor substituto.
 - Campos textuais obrigatórios rejeitam texto vazio ou apenas espaços e removem
   espaços exteriores.
 - Scores não podem ser negativos e têm de estar ambos ausentes ou ambos presentes.

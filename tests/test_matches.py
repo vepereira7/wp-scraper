@@ -33,7 +33,7 @@ def test_create_valid_match() -> None:
 
 @pytest.mark.parametrize(
     "field",
-    ["external_id", "season", "competition", "home", "away", "location"],
+    ["external_id", "season", "competition", "home", "away"],
 )
 @pytest.mark.parametrize("empty_value", ["", "   "])
 def test_required_text_cannot_be_empty(field: str, empty_value: str) -> None:
@@ -73,6 +73,15 @@ def test_match_with_both_scores_is_valid() -> None:
 
     assert match.score_home == 12
     assert match.score_away == 9
+
+
+def test_match_with_missing_location_is_valid() -> None:
+    data = valid_match_data()
+    data["location"] = None
+
+    match = Match(**data)
+
+    assert match.location is None
 
 
 def test_json_serialization_formats_date_and_time() -> None:
