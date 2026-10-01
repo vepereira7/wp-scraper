@@ -8,12 +8,85 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from waterpolo.models import Match, MatchCategory, MatchSource, MatchStatus
 from waterpolo.scraper.fpn.errors import FPNGameStructureError, FPNResponseError
 from waterpolo.scraper.fpn.models import FPNCompetition, FPNGame, FPNTeamIdentity
 
 HOME_TEAM_INDEX = 1
 AWAY_TEAM_INDEX = 2
 FOCA_NAMES = frozenset({"foca"})
+
+
+def scores_and_status(
+    game: FPNGame, *, now: datetime
+) -> tuple[int | None, int | None, MatchStatus]:
+    """Resolve result scores and status from gameTeams and gameDate."""
+    complete_scores = game.home_score is not None and game.away_score is not None
+    if not complete_scores:
+        return None, None, MatchStatus.SCHEDULED
+
+    home_score = game.home_score
+    away_score = game.away_score
+    if home_score != 0 or away_score != 0:
+        return home_score, away_score, MatchStatus.COMPLETED
+
+    if game.game_date is None:
+        return None, None, MatchStatus.SCHEDULED
+
+    if game.game_date.tzinfo is None or game.game_date.utcoffset() is None:
+        # ArenaDisplay returns local wall time without an offset. Compare it with
+        # local wall time too, keeping both values naive and deterministic in tests.
+        comparison_now = (
+            now.astimezone().replace(tzinfo=None)
+            if now.tzinfo is not None and now.utcoffset() is not None
+            else now
+        )
+        is_future = game.game_date > comparison_now
+    else:
+        comparison_now = now.astimezone(game.game_date.tzinfo)
+        is_future = game.game_date > comparison_now
+
+    if is_future:
+        return None, None, MatchStatus.SCHEDULED
+    return 0, 0, MatchStatus.COMPLETED
+
+
+def to_matches(
+    games: Sequence[FPNGame], *, season: str, now: datetime | None = None
+) -> list[Match]:
+    """Convert FPN games to source-independent matches."""
+    current_time = now or datetime.now().astimezone()
+    matches: list[Match] = []
+    for game in games:
+        if game.game_date is None:
+            raise FPNResponseError(f"Game {game.id} has no date")
+        if not game.home_team_name or not game.away_team_name:
+            raise FPNResponseError(f"Game {game.id} is missing a team name")
+
+        score_home, score_away, status = scores_and_status(game, now=current_time)
+        category = (
+            MatchCategory.SENIOR
+            if (game.competition_category or "").strip().casefold() == "senior"
+            else MatchCategory.UNKNOWN
+        )
+        matches.append(
+            Match(
+                external_id=game.id,
+                source=MatchSource.FPN,
+                season=season,
+                category=category,
+                competition=game.competition_name,
+                home=game.home_team_name,
+                away=game.away_team_name,
+                date=game.game_date.date(),
+                time=game.game_date.time(),
+                location=game.location,
+                score_home=score_home,
+                score_away=score_away,
+                status=status,
+            )
+        )
+    return matches
 
 
 def _text(value: Any) -> str | None:
@@ -61,7 +134,12 @@ def parse_competition(payload: Any, domain: str) -> FPNCompetition:
     if competition_name is None:
         raise FPNResponseError("Competition response is missing entity.displayName")
 
-    return FPNCompetition(id=competition_id, name=competition_name, domain=domain)
+    return FPNCompetition(
+        id=competition_id,
+        name=competition_name,
+        domain=domain,
+        category=_text(entity.get("category")),
+    )
 
 
 def _parse_team(team_data: Any) -> FPNTeamIdentity:
@@ -130,6 +208,7 @@ def parse_game(
     *,
     competition_id: str,
     competition_name: str,
+    competition_category: str | None = None,
 ) -> FPNGame:
     """Normalize one ArenaDisplay game without relying on array order."""
     if not isinstance(payload, Mapping):
@@ -152,6 +231,7 @@ def parse_game(
             id=game_id,
             competition_id=competition_id,
             competition_name=competition_name,
+            competition_category=competition_category,
             game_number=payload.get("gameNumber"),
             journey=payload.get("journey"),
             round=payload.get("round"),
@@ -176,6 +256,7 @@ def parse_games(
     *,
     competition_id: str,
     competition_name: str,
+    competition_category: str | None = None,
 ) -> list[FPNGame]:
     """Parse a GetFiltered response into normalized games."""
     if not isinstance(payload, Mapping):
@@ -192,6 +273,7 @@ def parse_games(
             game,
             competition_id=competition_id,
             competition_name=competition_name,
+            competition_category=competition_category,
         )
         for game in entities
     ]

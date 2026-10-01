@@ -13,6 +13,7 @@ class FPNCompetition(BaseModel):
     id: str
     name: str
     domain: str
+    category: str | None = None
 
 
 class FPNTeamIdentity(BaseModel):
@@ -33,6 +34,7 @@ class FPNGame(BaseModel):
     id: str
     competition_id: str
     competition_name: str
+    competition_category: str | None = None
     game_number: int | str | None = None
     journey: int | str | None = None
     round: int | str | None = None

@@ -1,290 +1,456 @@
-"""Inspect the FPN Arena schedule network traffic with Playwright.
+"""Save raw ArenaDisplay competition and selected-game diagnostics.
 
-Run on macOS with:
-    uv run python inspect_fpn_arena.py
+Example:
+    uv run python scripts/inspect_fpn_arena.py --domain po02_25-26 \
+        --game-number 21 --output data/debug/fpn_po02_game21.json
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import dataclass
+import sys
+from pathlib import Path
 from typing import Any
 
 import httpx
-from playwright.sync_api import (
-    Browser,
-    BrowserType,
-    Request,
-    Response,
-    sync_playwright,
+
+API_BASE_URL = "https://api-web.arenadisplay.live"
+DETAIL_PATHS = (
+    "/api/game/GetById/{game_id}",
+    "/api/game/Get/{game_id}",
+    "/api/game/{game_id}",
 )
-from playwright.sync_api import Error as PlaywrightError
-
-DEFAULT_URL = "https://po01_25-26.arenadisplay.live/home/schedule"
-NETWORK_TYPES = {"xhr", "fetch"}
-BODY_SAMPLE_LENGTH = 2_000
-
-
-@dataclass
-class JsonResponse:
-    """JSON response and the request that produced it."""
-
-    request: Request
-    response: Response
-    body: Any
-    content_type: str
-
-
-def body_sample(value: Any, limit: int = BODY_SAMPLE_LENGTH) -> str:
-    """Return a readable, bounded JSON sample."""
-    rendered = json.dumps(value, ensure_ascii=False, indent=2, default=str)
-    if len(rendered) <= limit:
-        return rendered
-    return f"{rendered[:limit]}\n... [truncated]"
+LOCATION_PATHS = (
+    "/api/location/{location_id}",
+    "/api/location/Get/{location_id}",
+    "/api/location/GetById/{location_id}",
+    "/api/locations/{location_id}",
+    "/api/venue/{location_id}",
+    "/api/venue/Get/{location_id}",
+    "/api/venue/GetById/{location_id}",
+)
+LOCATION_FILTERED_PATHS = (
+    "/api/location/GetFiltered/",
+    "/api/locations/GetFiltered/",
+    "/api/venue/GetFiltered/",
+    "/api/venues/GetFiltered/",
+)
+MAX_LOCATION_RESPONSE_BYTES = 50_000
 
 
-def launch_browser(chromium: BrowserType, headed: bool) -> Browser:
-    """Prefer the locally installed Chrome and fall back to Playwright Chromium."""
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--domain", required=True)
+    lookup = parser.add_mutually_exclusive_group(required=True)
+    lookup.add_argument("--game-id")
+    lookup.add_argument("--game-number", type=int)
+    parser.add_argument("--output", required=True, type=Path)
+    return parser.parse_args(argv)
+
+
+def find_game(
+    competition_raw: dict[str, Any], *, game_id: str | None, game_number: int | None
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    entity = competition_raw.get("entity")
+    if not isinstance(entity, dict):
+        raise TypeError("GetByDomain não devolveu um objeto entity")
+
+    candidates: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    phases = entity.get("phases", [])
+    if not isinstance(phases, list):
+        raise TypeError("entity.phases não é uma lista")
+    for phase in phases:
+        if not isinstance(phase, dict):
+            continue
+        games = phase.get("games", [])
+        if not isinstance(games, list):
+            continue
+        for game in games:
+            if not isinstance(game, dict):
+                continue
+            if (game_id is not None and str(game.get("id")) == game_id) or (
+                game_number is not None
+                and str(game.get("gameNumber")) == str(game_number)
+            ):
+                candidates.append((phase, game))
+
+    if not candidates:
+        target = f"id {game_id}" if game_id is not None else f"número {game_number}"
+        raise ValueError(f"Jogo com {target} não encontrado em entity.phases[].games[]")
+    if game_number is not None and len(candidates) > 1:
+        descriptions = [
+            {
+                "id": game.get("id"),
+                "gameNumber": game.get("gameNumber"),
+                "phaseId": phase.get("id"),
+                "phaseName": phase.get("name"),
+            }
+            for phase, game in candidates
+        ]
+        raise ValueError(
+            f"gameNumber {game_number} é ambíguo; candidatos: "
+            f"{json.dumps(descriptions, ensure_ascii=False)}"
+        )
+    return candidates[0]
+
+
+def decode_response(response: httpx.Response) -> Any:
     try:
-        return chromium.launch(channel="chrome", headless=not headed)
-    except PlaywrightError:
-        try:
-            return chromium.launch(headless=not headed)
-        except PlaywrightError as exc:
-            raise RuntimeError(
-                "No compatible browser was found. Run: uv run playwright install chromium"
-            ) from exc
+        return response.json()
+    except ValueError:
+        return response.text
 
 
-def candidate_score(item: JsonResponse) -> int:
-    """Rank JSON responses likely to contain schedule or match data."""
-    url = item.response.url.lower()
-    serialized = json.dumps(item.body, ensure_ascii=False, default=str).lower()
-    score = 0
-
-    if "/assets/" in url:
-        score -= 100
-    if "/api/game/getfiltered" in url:
-        score += 50
-    elif "/api/game/" in url:
-        score += 20
-    elif "/api/competition/getbydomain" in url:
-        score += 10
-
-    for keyword, weight in {
-        "schedule": 10,
-        "calendar": 8,
-        "fixture": 8,
-        "match": 7,
-        "game": 5,
-        "event": 4,
-        "api": 2,
-    }.items():
-        if keyword in url:
-            score += weight
-        if keyword in serialized[:20_000]:
-            score += weight
-
-    entity = item.body.get("entity") if isinstance(item.body, dict) else item.body
-    if isinstance(entity, list):
-        score += 2
-        if entity and isinstance(entity[0], dict) and "gameDate" in entity[0]:
-            score += 25
-    elif isinstance(item.body, dict):
-        for key in ("data", "items", "results", "matches", "games", "events"):
-            if key in item.body:
-                score += 3
-
-    return score
-
-
-def safe_request_headers(request: Request) -> dict[str, str]:
-    """Keep only headers useful for replaying an API request."""
-    allowed = {
-        "accept",
-        "authorization",
-        "content-type",
-        "origin",
-        "referer",
-        "user-agent",
-        "x-api-key",
-        "x-requested-with",
-    }
-    return {
-        name: value
-        for name, value in request.all_headers().items()
-        if name.lower() in allowed
-    }
-
-
-def direct_request(
-    candidate: JsonResponse,
-    browser_cookies: list[dict[str, Any]],
-) -> None:
-    """Try the candidate endpoint with httpx, first anonymously, then as replay."""
-    request = candidate.request
-    method = request.method
-    content = request.post_data.encode() if request.post_data is not None else None
-    content_type = request.header_value("content-type")
-    minimal_headers = {"content-type": content_type} if content_type else {}
-
-    print("\n=== DIRECT HTTPX TEST ===")
-    print(f"Candidate: {method} {request.url}")
-
-    cookies = {
-        cookie["name"]: cookie["value"]
-        for cookie in browser_cookies
-        if "name" in cookie and "value" in cookie
-    }
-    replay_headers = safe_request_headers(request)
-
+def attempt_detail(client: httpx.Client, path: str) -> dict[str, Any]:
+    endpoint = f"{API_BASE_URL}{path}"
     try:
-        with httpx.Client(follow_redirects=True, timeout=30) as client:
-            minimal = client.request(
-                method,
-                request.url,
-                headers=minimal_headers,
-                content=content,
-            )
-            print(f"Anonymous/minimal status: {minimal.status_code}")
-            print(
-                "Anonymous/minimal content-type: "
-                f"{minimal.headers.get('content-type', '')}"
-            )
-
-            if "json" in minimal.headers.get("content-type", "").lower():
-                print("Anonymous/minimal JSON sample:")
-                print(body_sample(minimal.json()))
-            else:
-                print(f"Anonymous/minimal body sample: {minimal.text[:500]}")
-
-            client.cookies.update(cookies)
-            replay = client.request(
-                method,
-                request.url,
-                headers=replay_headers,
-                content=content,
-            )
+        response = client.get(path)
+        result: dict[str, Any] = {
+            "endpoint": endpoint,
+            "status_code": response.status_code,
+            "ok": response.is_success,
+        }
+        if response.is_success:
+            result["response"] = decode_response(response)
+        else:
+            result["error"] = response.text[:2000] or response.reason_phrase
+        return result
     except httpx.HTTPError as exc:
-        print(f"httpx request failed: {exc}")
-        return
-
-    print(f"Browser-session replay status: {replay.status_code}")
-    print(f"Replay content-type: {replay.headers.get('content-type', '')}")
-    print(f"Replay header names: {sorted(replay_headers)}")
-    print(f"Replay cookie names: {sorted(cookies)}")
-    if "json" in replay.headers.get("content-type", "").lower():
-        print("Replay JSON sample:")
-        print(body_sample(replay.json()))
+        return {"endpoint": endpoint, "status_code": None, "ok": False, "error": str(exc)}
 
 
-def inspect(url: str, headed: bool, wait_ms: int, test_httpx: bool) -> None:
-    """Open the page and inspect its XHR/fetch responses."""
-    json_responses: list[JsonResponse] = []
-    failed_requests: list[Request] = []
+def response_keys(value: Any) -> list[str] | None:
+    if isinstance(value, dict):
+        return sorted(str(key) for key in value)
+    if isinstance(value, list):
+        keys = {
+            str(key)
+            for item in value
+            if isinstance(item, dict)
+            for key in item
+        }
+        return sorted(keys)
+    return None
 
-    with sync_playwright() as playwright:
-        browser = launch_browser(playwright.chromium, headed)
-        context = browser.new_context()
-        page = context.new_page()
 
-        def on_response(response: Response) -> None:
-            request = response.request
-            if request.resource_type not in NETWORK_TYPES:
-                return
-
-            content_type = response.headers.get("content-type", "")
-            print("\n=== XHR/FETCH RESPONSE ===")
-            print(f"method: {request.method}")
-            print(f"status: {response.status}")
-            print(f"url: {response.url}")
-            print(f"content-type: {content_type}")
-
-            if "json" not in content_type.lower():
-                return
-
+def attempt_location_post(
+    client: httpx.Client, path: str, payload: dict[str, Any]
+) -> dict[str, Any]:
+    endpoint = f"POST {API_BASE_URL}{path}"
+    result: dict[str, Any] = {
+        "method": "POST",
+        "endpoint": endpoint,
+        "payload": payload,
+    }
+    try:
+        response = client.post(path, json=payload)
+        result.update(status_code=response.status_code, ok=response.is_success)
+        if response.is_success:
             try:
                 body = response.json()
-            except PlaywrightError as exc:
-                print(f"JSON body unavailable: {exc}")
-                return
+            except ValueError:
+                result["error"] = "Resposta de sucesso não contém JSON válido"
+                result["response_summary"] = response.text[:1000]
+            else:
+                result["response_keys"] = response_keys(body)
+                result["response"] = body
+        else:
+            result["error"] = response.text[:2000] or response.reason_phrase
+        return result
+    except httpx.HTTPError as exc:
+        result.update(status_code=None, ok=False, error=str(exc))
+        return result
 
-            print("JSON sample:")
-            print(body_sample(body))
-            json_responses.append(JsonResponse(request, response, body, content_type))
 
-        def on_request_failed(request: Request) -> None:
-            if request.resource_type in NETWORK_TYPES:
-                failed_requests.append(request)
+def walk_objects(value: Any):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from walk_objects(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from walk_objects(child)
 
-        page.on("response", on_response)
-        page.on("requestfailed", on_request_failed)
 
-        print(f"Opening: {url}")
-        page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+def location_name(value: dict[str, Any]) -> str | None:
+    for key in ("name", "displayName", "locationName", "description"):
+        candidate = value.get(key)
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return None
+
+
+def finish_location_attempts(
+    client: httpx.Client, location_id: Any
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    attempts: list[dict[str, Any]] = []
+    payloads = [
+        {"id": location_id},
+        {"locationId": location_id},
+        {"ids": [location_id]},
+        {
+            "filterCollections": [
+                {
+                    "filterOperation": 0,
+                    "filterExpression": 0,
+                    "propertyName": "Id",
+                    "value": location_id,
+                }
+            ],
+            "orderCollection": [],
+        },
+        {
+            "filterCollections": [
+                {
+                    "filterOperation": 0,
+                    "filterExpression": 0,
+                    "propertyName": "LocationId",
+                    "value": location_id,
+                }
+            ],
+            "orderCollection": [],
+        },
+    ]
+    for path in LOCATION_FILTERED_PATHS:
+        for payload in payloads:
+            attempts.append(attempt_location_post(client, path, payload))
+
+    matching_id_count = 0
+    matching_location_id_count = 0
+    resolved_name: str | None = None
+    source_endpoint: str | None = None
+    for attempt in attempts:
+        body = attempt.get("response")
+        for item in walk_objects(body):
+            id_matches = str(item.get("id")) == str(location_id)
+            location_id_matches = str(item.get("locationId")) == str(location_id)
+            if id_matches:
+                matching_id_count += 1
+            if location_id_matches:
+                matching_location_id_count += 1
+            name = location_name(item) if id_matches or location_id_matches else None
+            if name is not None and resolved_name is None:
+                resolved_name = name
+                source_endpoint = attempt["endpoint"]
+
+    for attempt in attempts:
+        body = attempt.get("response")
+        if body is None:
+            continue
+        serialized = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
+        if len(serialized.encode("utf-8")) > MAX_LOCATION_RESPONSE_BYTES:
+            del attempt["response"]
+            attempt["response_truncated"] = True
+
+    summary = {
+        "location_id": location_id,
+        "resolved": resolved_name is not None,
+        "name": resolved_name,
+        "source_endpoint": source_endpoint,
+        "matching_id_count": matching_id_count,
+        "matching_location_id_count": matching_location_id_count,
+    }
+    return attempts, summary
+
+
+def inspect(domain: str, game_id: str | None, game_number: int | None) -> dict[str, Any]:
+    with httpx.Client(base_url=API_BASE_URL, timeout=20.0) as client:
+        competition_response = client.get(f"/api/competition/GetByDomain/{domain}")
+        competition_response.raise_for_status()
+        competition_raw = competition_response.json()
+        phase, base_game = find_game(
+            competition_raw, game_id=game_id, game_number=game_number
+        )
+
+        entity = competition_raw["entity"]
+        game_key = str(base_game["id"])
+        competition_id = str(entity.get("id", ""))
+        filtered_game: Any = None
+        filtered_path = "/api/game/GetFiltered/"
+        filtered_body = {
+            "filterCollections": [
+                {
+                    "filterOperation": 0,
+                    "filterExpression": 0,
+                    "propertyName": "CompetitionId",
+                    "value": competition_id,
+                }
+            ],
+            "orderCollection": [
+                {"propertyName": "GameDate", "orderType": 0},
+                {"propertyName": "GameNumber", "orderType": 0},
+            ],
+        }
+        detail_attempts: list[dict[str, Any]] = []
         try:
-            page.wait_for_load_state("networkidle", timeout=20_000)
-        except PlaywrightError:
-            print("Network did not become idle; continuing with captured traffic.")
-        page.wait_for_timeout(wait_ms)
+            filtered_response = client.post(filtered_path, json=filtered_body)
+            if filtered_response.is_success:
+                filtered_payload = filtered_response.json()
+                filtered_entity = filtered_payload.get("entity", [])
+                if isinstance(filtered_entity, list):
+                    filtered_game = next(
+                        (game for game in filtered_entity
+                         if isinstance(game, dict) and str(game.get("id")) == game_key),
+                        None,
+                    )
+                detail_attempts.append(
+                    {
+                        "endpoint": f"POST {API_BASE_URL}{filtered_path}",
+                        "status_code": filtered_response.status_code,
+                        "ok": True,
+                        "response": filtered_payload,
+                    }
+                )
+            else:
+                detail_attempts.append(
+                    {
+                        "endpoint": f"POST {API_BASE_URL}{filtered_path}",
+                        "status_code": filtered_response.status_code,
+                        "ok": False,
+                        "error": filtered_response.text[:2000]
+                        or filtered_response.reason_phrase,
+                    }
+                )
+        except (httpx.HTTPError, ValueError) as exc:
+            detail_attempts.append(
+                {
+                    "endpoint": f"POST {API_BASE_URL}{filtered_path}",
+                    "status_code": None,
+                    "ok": False,
+                    "error": str(exc),
+                }
+            )
 
-        if failed_requests:
-            print("\n=== FAILED XHR/FETCH REQUESTS ===")
-            for request in failed_requests:
-                print(f"{request.method} {request.url}: {request.failure}")
+        for path_template in DETAIL_PATHS:
+            detail_attempts.append(
+                attempt_detail(client, path_template.format(game_id=game_key))
+            )
 
-        if not json_responses:
-            print("\nNo JSON XHR/fetch responses were captured.")
-            browser.close()
-            return
+        game_versions = [base_game]
+        if isinstance(filtered_game, dict):
+            game_versions.insert(0, filtered_game)
+        game_versions.extend(
+            attempt["response"]
+            for attempt in detail_attempts
+            if attempt.get("ok") and isinstance(attempt.get("response"), dict)
+        )
+        location_id = next(
+            (
+                version.get("locationId")
+                for version in game_versions
+                if version.get("locationId") is not None
+            ),
+            None,
+        )
+        location = next(
+            (version.get("location") for version in game_versions if "location" in version),
+            None,
+        )
+        location_attempts: list[dict[str, Any]] = []
+        location_summary: dict[str, Any] = {
+            "location_id": location_id,
+            "resolved": False,
+            "name": None,
+            "source_endpoint": None,
+            "matching_id_count": 0,
+            "matching_location_id_count": 0,
+        }
+        if location_id is not None:
+            for path_template in LOCATION_PATHS:
+                location_attempts.append(
+                    attempt_detail(
+                        client,
+                        path_template.format(location_id=location_id),
+                    )
+                )
+            post_attempts, location_summary = finish_location_attempts(
+                client, location_id
+            )
+            location_attempts.extend(post_attempts)
 
-        ranked = sorted(json_responses, key=candidate_score, reverse=True)
-        candidate = ranked[0]
-        print("\n=== LIKELY SCHEDULE ENDPOINT ===")
-        print(f"score: {candidate_score(candidate)}")
-        print(f"method: {candidate.request.method}")
-        print(f"url: {candidate.response.url}")
-        print(f"content-type: {candidate.content_type}")
-        if candidate.request.post_data:
-            print(f"request body: {candidate.request.post_data}")
-        if isinstance(candidate.body, dict):
-            print(f"root keys: {sorted(candidate.body)}")
-            entity = candidate.body.get("entity")
-            if isinstance(entity, list):
-                print(f"entity count: {len(entity)}")
-                if entity and isinstance(entity[0], dict):
-                    print(f"first entity keys: {sorted(entity[0])}")
+            local_sources = [
+                (f"GET {API_BASE_URL}/api/competition/GetByDomain/{domain}", competition_raw),
+                ("base_game", base_game),
+                ("filtered_game", filtered_game),
+            ]
+            local_sources.extend(
+                (str(attempt.get("endpoint", "detail_attempt")), attempt["response"])
+                for attempt in detail_attempts
+                if attempt.get("ok") and "response" in attempt
+            )
+            local_sources.extend(
+                (str(attempt.get("endpoint", "location_attempt")), attempt["response"])
+                for attempt in location_attempts
+                if attempt.get("ok") and "response" in attempt
+            )
+            location_endpoint_sources = {
+                str(attempt.get("endpoint"))
+                for attempt in location_attempts
+                if attempt.get("ok") and "response" in attempt
+            }
+            location_summary["matching_id_count"] = 0
+            location_summary["matching_location_id_count"] = 0
+            for source_endpoint, source_value in local_sources:
+                for item in walk_objects(source_value):
+                    id_matches = str(item.get("id")) == str(location_id)
+                    location_id_matches = (
+                        str(item.get("locationId")) == str(location_id)
+                    )
+                    if id_matches:
+                        location_summary["matching_id_count"] += 1
+                    if location_id_matches:
+                        location_summary["matching_location_id_count"] += 1
+                    can_resolve = id_matches or (
+                        location_id_matches and source_endpoint in location_endpoint_sources
+                    )
+                    name = location_name(item) if can_resolve else None
+                    if name is not None and not location_summary["resolved"]:
+                        location_summary.update(
+                            resolved=True,
+                            name=name,
+                            source_endpoint=source_endpoint,
+                        )
 
-        if test_httpx:
-            direct_request(candidate, context.cookies())
+    return {
+        "domain": domain,
+        "game_lookup": {"game_id": game_key, "game_number": base_game.get("gameNumber")},
+        "competition_summary": {
+            "id": entity.get("id"),
+            "displayName": entity.get("displayName"),
+            "category": entity.get("category"),
+            "namespace": entity.get("namespace"),
+        },
+        "phase": {"id": phase.get("id"), "name": phase.get("name")},
+        "competition_id": entity.get("id"),
+        "game_id": game_key,
+        "game_number": base_game.get("gameNumber"),
+        "locationId": location_id,
+        "location": location,
+        "competition_raw": competition_raw,
+        "base_game": base_game,
+        "filtered_game": filtered_game,
+        "detail_attempts": detail_attempts,
+        "location_attempts": location_attempts,
+        "location_summary": location_summary,
+    }
 
-        browser.close()
 
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--url", default=DEFAULT_URL)
-    parser.add_argument("--headed", action="store_true", help="Show the browser window")
-    parser.add_argument(
-        "--wait-ms",
-        type=int,
-        default=5_000,
-        help="Extra wait after page load (default: 5000)",
-    )
-    parser.add_argument(
-        "--no-httpx",
-        action="store_true",
-        help="Do not replay the likely endpoint with httpx",
-    )
-    return parser.parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    try:
+        diagnostic = inspect(args.domain, args.game_id, args.game_number)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(
+            json.dumps(diagnostic, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except (httpx.HTTPError, ValueError, TypeError, KeyError, OSError) as exc:
+        print(f"Erro ao inspecionar API ArenaDisplay: {exc}", file=sys.stderr)
+        return 1
+    print(f"Diagnóstico guardado em {args.output}")
+    return 0
 
 
 if __name__ == "__main__":
-    arguments = parse_args()
-    inspect(
-        url=arguments.url,
-        headed=arguments.headed,
-        wait_ms=arguments.wait_ms,
-        test_httpx=not arguments.no_httpx,
-    )
+    raise SystemExit(main())

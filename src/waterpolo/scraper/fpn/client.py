@@ -41,6 +41,7 @@ class FPNArenaClient:
             headers={"Accept": "application/json"},
         )
         self._competition_names: dict[str, str] = {}
+        self._competition_categories: dict[str, str | None] = {}
 
     def close(self) -> None:
         """Close the internally managed HTTP connection pool."""
@@ -115,6 +116,7 @@ class FPNArenaClient:
 
         competition = parse_competition(payload, normalized_domain)
         self._competition_names[competition.id] = competition.name
+        self._competition_categories[competition.id] = competition.category
         return competition
 
     def get_games(
@@ -154,6 +156,7 @@ class FPNArenaClient:
             payload,
             competition_id=normalized_id,
             competition_name=resolved_name,
+            competition_category=self._competition_categories.get(normalized_id),
         )
 
     def get_team_games(self, *, domain: str, team: str) -> list[FPNGame]:

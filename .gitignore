@@ -16,6 +16,8 @@ data/*.xlsx
 data/*.csv
 data/*.ics
 data/*.json
+data/exports/
+data/debug/
 /output/
 /outputs/
 

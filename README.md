@@ -81,8 +81,17 @@ with FPNArenaClient() as client:
     foca_games = client.get_team_games(domain="po02_25-26", team="FOCA")
 ```
 
-O código de produção não usa Playwright. `inspect_fpn_arena.py` é apenas uma
-ferramenta de diagnóstico da atividade de rede do frontend.
+O código de produção não depende do script de diagnóstico. Para guardar a
+resposta bruta da competição e inspecionar um jogo específico:
+
+```console
+uv run python scripts/inspect_fpn_arena.py --domain po02_25-26 \\
+  --game-number 21 --output data/debug/fpn_po02_game21.json
+```
+
+Também é possível selecionar diretamente com `--game-id`. O script tenta
+`POST /api/game/GetFiltered/` e três variantes GET de detalhe (`GetById/{id}`,
+`Get/{id}` e `/{id}`); resultados e falhas ficam registados no JSON debug.
 
 ## Roadmap
 

@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 import pytest
 
+from waterpolo.models import MatchCategory, MatchStatus
 from waterpolo.scraper.fpn import (
     FPNArenaClient,
     FPNArenaHTTPError,
@@ -20,6 +21,7 @@ from waterpolo.scraper.fpn.scraper import (
     find_team_identities,
     parse_competition,
     parse_game,
+    to_matches,
 )
 
 COMPETITION_ID = "competition-123"
@@ -32,6 +34,7 @@ def competition_response() -> dict[str, Any]:
         "entity": {
             "id": COMPETITION_ID,
             "displayName": COMPETITION_NAME,
+            "category": "senior",
         }
     }
 
@@ -77,6 +80,7 @@ def parse_test_game(payload: dict[str, Any]) -> FPNGame:
         payload,
         competition_id=COMPETITION_ID,
         competition_name=COMPETITION_NAME,
+        competition_category="senior",
     )
 
 
@@ -110,6 +114,7 @@ def test_parse_competition() -> None:
         "id": COMPETITION_ID,
         "name": COMPETITION_NAME,
         "domain": "po02_25-26",
+        "category": "senior",
     }
 
 
@@ -143,6 +148,122 @@ def test_game_with_score() -> None:
 
     assert game.home_score == 17
     assert game.away_score == 8
+
+
+def test_to_matches_maps_senior_category_and_completed_result() -> None:
+    payload = game_response(
+        home_name="FOCA", away_name="CNPO B", home_score=18, away_score=11
+    )
+    payload["gameTeams"].reverse()
+    game = parse_test_game(payload)
+
+    match = to_matches([game], season="2025/26")[0]
+
+    assert match.category is MatchCategory.SENIOR
+    assert match.home == "FOCA"
+    assert match.away == "CNPO B"
+    assert match.score_home == 18
+    assert match.score_away == 11
+    assert match.status is MatchStatus.COMPLETED
+
+
+def test_to_matches_maps_unknown_competition_category() -> None:
+    game = parse_game(
+        game_response(),
+        competition_id=COMPETITION_ID,
+        competition_name=COMPETITION_NAME,
+        competition_category="youth-unknown",
+    )
+
+    assert to_matches([game], season="2025/26")[0].category is MatchCategory.UNKNOWN
+
+
+def test_future_zero_zero_is_scheduled_without_scores() -> None:
+    payload = game_response(home_score=0, away_score=0)
+    payload["gameDate"] = "2026-02-07T16:00:00"
+    game = parse_test_game(payload)
+
+    match = to_matches(
+        [game], season="2025/26", now=datetime.fromisoformat("2026-02-07T15:00:00")
+    )[0]
+
+    assert match.score_home is None
+    assert match.score_away is None
+    assert match.status is MatchStatus.SCHEDULED
+
+
+def test_past_zero_zero_is_completed_with_zero_scores() -> None:
+    payload = game_response(home_score=0, away_score=0)
+    payload["gameDate"] = "2026-02-07T14:00:00"
+    game = parse_test_game(payload)
+
+    match = to_matches(
+        [game], season="2025/26", now=datetime.fromisoformat("2026-02-07T15:00:00")
+    )[0]
+
+    assert match.score_home == 0
+    assert match.score_away == 0
+    assert match.status is MatchStatus.COMPLETED
+
+
+def test_future_nonzero_scores_are_completed() -> None:
+    payload = game_response(home_score=3, away_score=2)
+    payload["gameDate"] = "2026-02-07T16:00:00"
+    game = parse_test_game(payload)
+
+    match = to_matches(
+        [game], season="2025/26", now=datetime.fromisoformat("2026-02-07T15:00:00")
+    )[0]
+
+    assert match.score_home == 3
+    assert match.score_away == 2
+    assert match.status is MatchStatus.COMPLETED
+
+
+def test_past_nonzero_scores_are_completed() -> None:
+    payload = game_response(home_score=3, away_score=2)
+    payload["gameDate"] = "2026-02-07T14:00:00"
+    game = parse_test_game(payload)
+
+    match = to_matches(
+        [game], season="2025/26", now=datetime.fromisoformat("2026-02-07T15:00:00")
+    )[0]
+
+    assert match.score_home == 3
+    assert match.score_away == 2
+    assert match.status is MatchStatus.COMPLETED
+
+
+def test_game_without_teams_keeps_scores_missing_and_is_not_completed() -> None:
+    payload = game_response()
+    payload["gameTeams"] = None
+    payload["state"] = "2"
+
+    match = to_matches([parse_test_game(payload)], season="2025/26")[0]
+
+    assert match.score_home is None
+    assert match.score_away is None
+    assert match.status is MatchStatus.SCHEDULED
+
+
+def test_game_with_only_one_score_keeps_both_scores_missing() -> None:
+    payload = game_response()
+    payload["gameTeams"] = [team(1, FOCA_ID, "FOCA", 18)]
+
+    match = to_matches([parse_test_game(payload)], season="2025/26")[0]
+
+    assert match.score_home is None
+    assert match.score_away is None
+    assert match.status is MatchStatus.SCHEDULED
+
+
+def test_null_location_stays_null_in_match() -> None:
+    payload = game_response()
+    payload["location"] = None
+
+    match = to_matches([parse_test_game(payload)], season="2025/26")[0]
+
+    assert match.location is None
 
 
 def test_unplayed_game_with_null_scores() -> None:
@@ -226,6 +347,7 @@ def test_get_team_games_fetches_and_filters() -> None:
         games = client.get_team_games(domain="po02_25-26", team="FOCA")
 
     assert [game.id for game in games] == ["foca-game"]
+    assert games[0].competition_category == "senior"
 
 
 def test_endpoint_error_is_not_silenced() -> None:
@@ -290,6 +412,7 @@ def test_games_response_without_entity_is_rejected() -> None:
         "not-an-array",
         [{"teamIndex": 3, "team": None}],
         [{"teamIndex": 1}, {"teamIndex": 1}],
+        [{"score": 18}],
     ],
 )
 def test_unexpected_game_teams_structure_is_rejected(game_teams: Any) -> None:

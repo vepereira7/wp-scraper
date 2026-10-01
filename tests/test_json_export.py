@@ -1,5 +1,6 @@
 import json
 from datetime import date, datetime, time
+from pathlib import Path
 
 from waterpolo.models import Match, MatchCategory, MatchSource
 from waterpolo.services.json_export import export_matches_json
@@ -55,3 +56,11 @@ def test_export_preserves_missing_location_as_null() -> None:
     payload = export_matches_json([match])
 
     assert payload["matches"][0]["location"] is None
+
+
+def test_json_exporter_has_no_fpn_dependency() -> None:
+    exporter_source = (
+        Path(__file__).parents[1] / "src" / "waterpolo" / "services" / "json_export.py"
+    ).read_text()
+
+    assert "waterpolo.scraper.fpn" not in exporter_source
