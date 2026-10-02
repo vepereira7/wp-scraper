@@ -11,6 +11,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from waterpolo.models import Match, MatchCategory, MatchSource, MatchStatus
+from waterpolo.scraper.fpn.domain import extract_fpn_season
 from waterpolo.scraper.fpn.errors import FPNGameStructureError, FPNResponseError
 from waterpolo.scraper.fpn.models import FPNCompetition, FPNGame, FPNTeamIdentity
 from waterpolo.scraper.fpn.venues import (
@@ -61,11 +62,16 @@ def scores_and_status(
 def to_matches(
     games: Sequence[FPNGame],
     *,
-    season: str,
+    domain: str,
     now: datetime | None = None,
     venue_mapping: FPNVenueMapping | None = None,
 ) -> list[Match]:
-    """Convert FPN games to source-independent matches."""
+    """Convert FPN games to source-independent matches.
+
+    ``domain`` is the FPN competition domain; the resulting Match carries the
+    app's normalized season identifier instead.
+    """
+    normalized_season = extract_fpn_season(domain)
     current_time = now or datetime.now().astimezone()
     configured_venues = venue_mapping if venue_mapping is not None else load_fpn_venue_mapping()
     matches: list[Match] = []
@@ -80,7 +86,7 @@ def to_matches(
         match = Match(
                 external_id=game.id,
                 source=MatchSource.FPN,
-                season=season,
+                season=normalized_season,
                 category=category,
                 competition=game.competition_name,
                 home=game.home_team_name,

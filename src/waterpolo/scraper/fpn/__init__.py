@@ -1,6 +1,7 @@
 """Public API for the FPN ArenaDisplay integration."""
 
 from waterpolo.scraper.fpn.client import FPNArenaClient
+from waterpolo.scraper.fpn.domain import extract_fpn_season
 from waterpolo.scraper.fpn.errors import (
     FPNArenaError,
     FPNArenaHTTPError,
@@ -21,5 +22,6 @@ __all__ = [
     "FPNGameStructureError",
     "FPNResponseError",
     "FPNTeamIdentity",
+    "extract_fpn_season",
     "is_foca_team",
 ]

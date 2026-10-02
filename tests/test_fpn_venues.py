@@ -63,13 +63,13 @@ def test_specific_match_override_precedes_home_team_mapping() -> None:
 
 def test_missing_location_uses_exact_case_and_space_insensitive_home_match() -> None:
     mapping = FPNVenueMapping(
-        team_venues={"  fOcA   Clube ": "Piscinas Municipais de Felgueiras"},
+        team_venues={"  fOcA   Clube ": "Felgueiras"},
         match_overrides={},
     )
 
     resolved = resolve_fpn_location(make_match(home=" FOCA   CLUBE "), mapping)
 
-    assert resolved.location == "Piscinas Municipais de Felgueiras"
+    assert resolved.location == "Felgueiras"
 
 
 def test_unmapped_home_team_keeps_location_none() -> None:
@@ -96,11 +96,11 @@ def test_default_foca_mapping_is_used_during_fpn_conversion() -> None:
         away_team_name="SCP",
     )
 
-    normalized = to_matches([game], season="2025/26")[0]
+    normalized = to_matches([game], domain="po01_25-26")[0]
     payload = export_matches_json([normalized])
 
-    assert normalized.location == "Piscinas Municipais de Felgueiras"
-    assert payload["matches"][0]["location"] == "Piscinas Municipais de Felgueiras"
+    assert normalized.location == "Felgueiras"
+    assert payload["matches"][0]["location"] == "Felgueiras"
 
 
 def test_api_location_is_kept_in_fpn_conversion() -> None:
@@ -114,7 +114,7 @@ def test_api_location_is_kept_in_fpn_conversion() -> None:
         location="Piscina específica da API",
     )
 
-    normalized = to_matches([game], season="2025/26")[0]
+    normalized = to_matches([game], domain="po01_25-26")[0]
 
     assert normalized.location == "Piscina específica da API"
 
@@ -128,12 +128,19 @@ def test_fpn_location_flows_to_common_ics_export(tmp_path: Path) -> None:
         home_team_name="FOCA",
         away_team_name="SCP",
     )
-    normalized = to_matches([game], season="2025/26")[0]
+    normalized = to_matches([game], domain="po01_25-26")[0]
     output = tmp_path / "matches.ics"
 
     export_matches_ics([normalized], output)
 
-    assert "LOCATION:Piscinas Municipais de Felgueiras" in output.read_text()
+    assert "LOCATION:Felgueiras" in output.read_text()
+
+
+def test_ics_omits_location_when_match_location_is_none(tmp_path: Path) -> None:
+    output = tmp_path / "matches.ics"
+    export_matches_ics([make_match(location=None)], output)
+
+    assert "LOCATION:" not in output.read_text()
 
 
 def test_away_foca_uses_mapped_home_opponent_pool() -> None:
@@ -148,6 +155,14 @@ def test_away_foca_uses_mapped_home_opponent_pool() -> None:
     assert resolved.location != mapping.team_venues["FOCA"]
 
 
+def test_away_foca_without_home_team_mapping_keeps_location_none() -> None:
+    mapping = FPNVenueMapping(team_venues={"FOCA": "Felgueiras"}, match_overrides={})
+
+    resolved = resolve_fpn_location(make_match(home="OUTRA", away="FOCA"), mapping)
+
+    assert resolved.location is None
+
+
 def test_fpn_mapping_does_not_apply_to_ANNP() -> None:
     mapping = FPNVenueMapping(team_venues={"FOCA": "Piscina FOCA"}, match_overrides={})
 
@@ -157,7 +172,7 @@ def test_fpn_mapping_does_not_apply_to_ANNP() -> None:
 
 
 def test_default_venue_mapping_has_checked_in_configuration() -> None:
-    assert load_fpn_venue_mapping().team_venues["FOCA"] == "Piscinas Municipais de Felgueiras"
+    assert load_fpn_venue_mapping().team_venues["FOCA"] == "Felgueiras"
 
 
 def test_venue_mapping_loads_team_and_match_entries(tmp_path: Path) -> None:

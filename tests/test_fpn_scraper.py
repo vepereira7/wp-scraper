@@ -159,9 +159,10 @@ def test_to_matches_maps_senior_category_and_completed_result() -> None:
     payload["gameTeams"].reverse()
     game = parse_test_game(payload)
 
-    match = to_matches([game], season="2025/26")[0]
+    match = to_matches([game], domain="po01_25-26")[0]
 
     assert match.category is MatchCategory.SENIOR
+    assert match.season == "S2526"
     assert match.home == "FOCA"
     assert match.away == "CNPO B"
     assert match.score_home == 18
@@ -177,7 +178,7 @@ def test_to_matches_maps_unknown_competition_category() -> None:
         competition_category="youth-unknown",
     )
 
-    assert to_matches([game], season="2025/26")[0].category is MatchCategory.UNKNOWN
+    assert to_matches([game], domain="po01_25-26")[0].category is MatchCategory.UNKNOWN
 
 
 @pytest.mark.parametrize(
@@ -216,7 +217,7 @@ def test_future_zero_zero_is_scheduled_without_scores() -> None:
     game = parse_test_game(payload)
 
     match = to_matches(
-        [game], season="2025/26", now=datetime.fromisoformat("2026-02-07T15:00:00")
+        [game], domain="po01_25-26", now=datetime.fromisoformat("2026-02-07T15:00:00")
     )[0]
 
     assert match.score_home is None
@@ -230,7 +231,7 @@ def test_past_zero_zero_is_completed_with_zero_scores() -> None:
     game = parse_test_game(payload)
 
     match = to_matches(
-        [game], season="2025/26", now=datetime.fromisoformat("2026-02-07T15:00:00")
+        [game], domain="po01_25-26", now=datetime.fromisoformat("2026-02-07T15:00:00")
     )[0]
 
     assert match.score_home == 0
@@ -244,7 +245,7 @@ def test_future_nonzero_scores_are_completed() -> None:
     game = parse_test_game(payload)
 
     match = to_matches(
-        [game], season="2025/26", now=datetime.fromisoformat("2026-02-07T15:00:00")
+        [game], domain="po01_25-26", now=datetime.fromisoformat("2026-02-07T15:00:00")
     )[0]
 
     assert match.score_home == 3
@@ -258,7 +259,7 @@ def test_past_nonzero_scores_are_completed() -> None:
     game = parse_test_game(payload)
 
     match = to_matches(
-        [game], season="2025/26", now=datetime.fromisoformat("2026-02-07T15:00:00")
+        [game], domain="po01_25-26", now=datetime.fromisoformat("2026-02-07T15:00:00")
     )[0]
 
     assert match.score_home == 3
@@ -273,7 +274,7 @@ def test_game_without_teams_keeps_scores_missing_and_is_not_completed() -> None:
 
     match = to_matches(
         [parse_test_game(payload)],
-        season="2025/26",
+        domain="po01_25-26",
         venue_mapping=FPNVenueMapping(team_venues={}, match_overrides={}),
     )[0]
 
@@ -286,7 +287,7 @@ def test_game_with_only_one_score_keeps_both_scores_missing() -> None:
     payload = game_response()
     payload["gameTeams"] = [team(1, FOCA_ID, "FOCA", 18)]
 
-    match = to_matches([parse_test_game(payload)], season="2025/26")[0]
+    match = to_matches([parse_test_game(payload)], domain="po01_25-26")[0]
 
     assert match.score_home is None
     assert match.score_away is None
@@ -299,7 +300,7 @@ def test_null_location_stays_null_in_match() -> None:
 
     match = to_matches(
         [parse_test_game(payload)],
-        season="2025/26",
+        domain="po01_25-26",
         venue_mapping=FPNVenueMapping(team_venues={}, match_overrides={}),
     )[0]
 

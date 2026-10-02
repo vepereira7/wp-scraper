@@ -29,7 +29,7 @@ output com valor `null`.
       "external_id": "fpn-123",
       "source": "FPN",
       "source_url": "https://example.test/fpn/123",
-      "season": "2026/27",
+      "season": "S2627",
       "category": "U16",
       "competition": "Campeonato Nacional",
       "home": "FOCA",

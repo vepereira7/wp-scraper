@@ -64,18 +64,55 @@ Mais detalhes em [docs/model.md](docs/model.md).
 }
 ```
 
-O contrato completo está em [docs/output-contract.md](docs/output-contract.md).
+O contrato técnico está em [docs/output-contract.md](docs/output-contract.md). O
+contrato para consumidores externos, com exemplo de export FPN, está em
+[docs/export_contract.md](docs/export_contract.md).
 
-## Calendário ICS
+## Publicar calendários ICS num servidor
 
-O ficheiro ICS pode ser importado manualmente, mas isso pode criar uma cópia
-estática. Para atualizações contínuas, publique o ficheiro num URL fixo e adicione
-esse URL como calendário subscrito. Quando o script regenerar o ficheiro no mesmo
-caminho/URL, os clientes poderão atualizar os eventos através do UID estável de
-cada jogo, em vez de os tratarem como eventos novos. A atualização não é
-instantânea: depende da frequência de atualização de cada aplicação de calendário.
-O `SEQUENCE` fica em zero enquanto não existir histórico para comparar exports;
-no futuro poderá ser incrementado ao comparar a versão anterior com a nova.
+O script `scripts/update_calendars.sh` gera calendários ICS para publicação. Por
+omissão grava em `data/published_calendars`; no servidor configure
+`CALENDAR_OUTPUT_DIR=/var/www/waterpolo-calendars`. O script escreve primeiro um
+ficheiro temporário e move-o para o nome final após um export bem-sucedido.
+
+Sirva cada ficheiro no mesmo URL ao longo do tempo. Os utilizadores devem
+subscrever esse URL como calendário, em vez de importar o ficheiro manualmente;
+assim a aplicação de calendário pode procurar atualizações no URL fixo. Um
+servidor pode servir por IP público, sem domínio, por exemplo:
+
+```text
+http://<IP_PUBLICO>/calendars/foca-seniores-a1.ics
+```
+
+Exemplo de configuração Nginx:
+
+```nginx
+location /calendars/ {
+    alias /var/www/waterpolo-calendars/;
+    types {
+        text/calendar ics;
+    }
+    default_type text/calendar;
+    add_header Cache-Control "public, max-age=300";
+}
+```
+
+Exemplo de cron para atualizar de seis em seis horas:
+
+```cron
+0 */6 * * * /opt/waterpolo/scripts/update_calendars.sh >> /var/log/waterpolo-calendar.log 2>&1
+```
+
+O URL permanece fixo, mas as alterações não aparecem instantaneamente: dependem
+da frequência de atualização da aplicação de calendário. O UID estável ajuda a
+atualizar os eventos existentes. O `SEQUENCE` fica em zero enquanto não existir
+histórico para comparar exports.
+
+Localmente, pode escolher outro destino:
+
+```console
+CALENDAR_OUTPUT_DIR=data/published_calendars ./scripts/update_calendars.sh
+```
 
 ## Cliente FPN ArenaDisplay
 
@@ -111,7 +148,7 @@ Quando a API não fornece um local, o conversor FPN consulta
 `team_venues` para piscinas habituais por equipa e `match_overrides` para jogos
 específicos. Uma localização real da API tem precedência sobre overrides; um
 override tem precedência sobre a piscina da equipa da casa. A configuração inicial
-contém apenas FOCA → Piscinas Municipais de Felgueiras, confirmado pelo
+contém apenas FOCA → Felgueiras, confirmado pelo
 [Município de Felgueiras](https://cm-felgueiras.pt/viver/desporto-e-lazer/oferta-desportiva/).
 Equipas ainda não verificadas ficam sem localização até serem adicionadas ao
 ficheiro. Esta resolução é exclusiva do fluxo FPN.

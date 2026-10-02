@@ -53,6 +53,8 @@ def test_fpn_export_cli_writes_matches_json(tmp_path: Path, monkeypatch) -> None
     assert payload["source"] == "FPN"
     assert payload["match_count"] == 1
     assert payload["matches"][0]["home"] == "FOCA"
+    assert payload["matches"][0]["season"] == "S2526"
+    assert payload["matches"][0]["location"] == "Felgueiras"
 
 
 def test_fpn_export_failure_does_not_create_output(tmp_path: Path, monkeypatch) -> None:
@@ -73,7 +75,7 @@ def test_fpn_export_failure_does_not_create_output(tmp_path: Path, monkeypatch) 
     monkeypatch.setattr("waterpolo.main.RUN_LOG_DIR", log_dir)
 
     result = main(
-        ["export", "fpn", "--domain", "domain", "--team", "FOCA", "--output", str(output)]
+        ["export", "fpn", "--domain", "po01_25-26", "--team", "FOCA", "--output", str(output)]
     )
 
     assert result == 1
@@ -101,7 +103,7 @@ def test_fpn_export_cli_writes_ics_and_success_log(tmp_path: Path, monkeypatch) 
     monkeypatch.setattr("waterpolo.main.RUN_LOG_DIR", log_dir)
 
     assert main(
-        ["export", "fpn", "--domain", "d", "--team", "FOCA", "--format", "ics", "--output", str(output)]
+        ["export", "fpn", "--domain", "po01_25-26", "--team", "FOCA", "--format", "ics", "--output", str(output)]
     ) == 0
 
     assert "BEGIN:VCALENDAR" in output.read_text()
@@ -121,7 +123,7 @@ def test_fpn_export_cli_rejects_invalid_format() -> None:
 def test_fpn_export_cli_rejects_incompatible_extension(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr("waterpolo.main.RUN_LOG_DIR", tmp_path / "logs")
     result = main(
-        ["export", "fpn", "--domain", "d", "--team", "FOCA", "--format", "ics", "--output", str(tmp_path / "wrong.json")]
+        ["export", "fpn", "--domain", "po01_25-26", "--team", "FOCA", "--format", "ics", "--output", str(tmp_path / "wrong.json")]
     )
     assert result == 1
     log = next((tmp_path / "logs").glob("*.txt")).read_text()

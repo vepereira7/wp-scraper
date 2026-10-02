@@ -59,7 +59,7 @@ def export_fpn(
             )
         with FPNArenaClient() as client:
             games = client.get_team_games(domain=domain, team=team)
-            matches = to_matches(games, season=domain)
+            matches = to_matches(games, domain=domain)
         if output_format == "json":
             payload = export_matches_json(matches, source="FPN")
             output.parent.mkdir(parents=True, exist_ok=True)

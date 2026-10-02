@@ -16,7 +16,11 @@ data/*.xlsx
 data/*.csv
 data/*.ics
 data/*.json
+!data/samples/
+data/samples/*
+!data/samples/*.sample.json
 data/exports/
+data/published_calendars/
 data/logs/
 data/debug/
 /output/

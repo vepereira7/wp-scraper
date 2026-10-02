@@ -122,7 +122,7 @@ def test_fpn_category_labels_are_shared_by_json_and_ics(
     )
     normalized_match = to_matches(
         [game],
-        season="2025/26",
+        domain="po01_25-26",
         now=datetime.fromisoformat("2026-01-01T12:00:00"),
     )[0]
 
