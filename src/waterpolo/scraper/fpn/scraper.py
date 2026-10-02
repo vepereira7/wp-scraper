@@ -13,6 +13,11 @@ from pydantic import ValidationError
 from waterpolo.models import Match, MatchCategory, MatchSource, MatchStatus
 from waterpolo.scraper.fpn.errors import FPNGameStructureError, FPNResponseError
 from waterpolo.scraper.fpn.models import FPNCompetition, FPNGame, FPNTeamIdentity
+from waterpolo.scraper.fpn.venues import (
+    FPNVenueMapping,
+    load_fpn_venue_mapping,
+    resolve_fpn_location,
+)
 
 HOME_TEAM_INDEX = 1
 AWAY_TEAM_INDEX = 2
@@ -54,10 +59,15 @@ def scores_and_status(
 
 
 def to_matches(
-    games: Sequence[FPNGame], *, season: str, now: datetime | None = None
+    games: Sequence[FPNGame],
+    *,
+    season: str,
+    now: datetime | None = None,
+    venue_mapping: FPNVenueMapping | None = None,
 ) -> list[Match]:
     """Convert FPN games to source-independent matches."""
     current_time = now or datetime.now().astimezone()
+    configured_venues = venue_mapping if venue_mapping is not None else load_fpn_venue_mapping()
     matches: list[Match] = []
     for game in games:
         if game.game_date is None:
@@ -67,8 +77,7 @@ def to_matches(
 
         score_home, score_away, status = scores_and_status(game, now=current_time)
         category = map_fpn_category(game.competition_category, game.competition_name)
-        matches.append(
-            Match(
+        match = Match(
                 external_id=game.id,
                 source=MatchSource.FPN,
                 season=season,
@@ -83,7 +92,7 @@ def to_matches(
                 score_away=score_away,
                 status=status,
             )
-        )
+        matches.append(resolve_fpn_location(match, configured_venues))
     return matches
 
 

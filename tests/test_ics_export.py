@@ -124,6 +124,16 @@ def test_ics_escapes_special_text_and_emits_location_only_when_known(tmp_path: P
     assert "LOCATION:Piscina\\, Norte\\; Bloco\\\\A" in ics
 
 
+def test_ics_writes_real_match_location_and_omits_missing_location(tmp_path: Path) -> None:
+    with_location = tmp_path / "with-location.ics"
+    without_location = tmp_path / "without-location.ics"
+    export_matches_ics([match(location="Piscina Municipal")], with_location)
+    export_matches_ics([match(location=None)], without_location)
+
+    assert "LOCATION:Piscina Municipal" in with_location.read_text()
+    assert "LOCATION:" not in without_location.read_text()
+
+
 def test_ics_exporter_has_no_fpn_dependency() -> None:
     source = (Path(__file__).parents[1] / "src/waterpolo/services/ics_export.py").read_text()
     assert "waterpolo.scraper.fpn" not in source

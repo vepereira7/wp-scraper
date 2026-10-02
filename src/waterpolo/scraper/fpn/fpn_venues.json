@@ -1,0 +1,13 @@
+{
+  "team_venues": {
+    "FOCA": "Felgueiras",
+    "CFP": "Fluvial",
+    "CNPO": "Senhora da Hora",
+    "CAP": "Paços de Ferreira",
+    "SCP": "Alvalade",
+    "CWP": "Cascais",
+    "PPA": "Paredes",
+    "VSC": "Guimarães"
+  },
+  "match_overrides": {}
+}

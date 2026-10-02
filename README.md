@@ -104,6 +104,18 @@ Também é possível selecionar diretamente com `--game-id`. O script tenta
 `POST /api/game/GetFiltered/` e três variantes GET de detalhe (`GetById/{id}`,
 `Get/{id}` e `/{id}`); resultados e falhas ficam registados no JSON debug.
 
+### Localizações FPN
+
+Quando a API não fornece um local, o conversor FPN consulta
+[`fpn_venues.json`](src/waterpolo/scraper/fpn/fpn_venues.json). O ficheiro aceita
+`team_venues` para piscinas habituais por equipa e `match_overrides` para jogos
+específicos. Uma localização real da API tem precedência sobre overrides; um
+override tem precedência sobre a piscina da equipa da casa. A configuração inicial
+contém apenas FOCA → Piscinas Municipais de Felgueiras, confirmado pelo
+[Município de Felgueiras](https://cm-felgueiras.pt/viver/desporto-e-lazer/oferta-desportiva/).
+Equipas ainda não verificadas ficam sem localização até serem adicionadas ao
+ficheiro. Esta resolução é exclusiva do fluxo FPN.
+
 ## Roadmap
 
 1. Modelo `Match` e contrato de output.

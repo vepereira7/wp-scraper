@@ -24,6 +24,7 @@ from waterpolo.scraper.fpn.scraper import (
     parse_game,
     to_matches,
 )
+from waterpolo.scraper.fpn.venues import FPNVenueMapping
 
 COMPETITION_ID = "competition-123"
 COMPETITION_NAME = "Campeonato Portugal A2 Masculinos"
@@ -270,7 +271,11 @@ def test_game_without_teams_keeps_scores_missing_and_is_not_completed() -> None:
     payload["gameTeams"] = None
     payload["state"] = "2"
 
-    match = to_matches([parse_test_game(payload)], season="2025/26")[0]
+    match = to_matches(
+        [parse_test_game(payload)],
+        season="2025/26",
+        venue_mapping=FPNVenueMapping(team_venues={}, match_overrides={}),
+    )[0]
 
     assert match.score_home is None
     assert match.score_away is None
@@ -292,7 +297,11 @@ def test_null_location_stays_null_in_match() -> None:
     payload = game_response()
     payload["location"] = None
 
-    match = to_matches([parse_test_game(payload)], season="2025/26")[0]
+    match = to_matches(
+        [parse_test_game(payload)],
+        season="2025/26",
+        venue_mapping=FPNVenueMapping(team_venues={}, match_overrides={}),
+    )[0]
 
     assert match.location is None
 
