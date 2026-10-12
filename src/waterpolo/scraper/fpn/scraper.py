@@ -24,14 +24,53 @@ HOME_TEAM_INDEX = 1
 AWAY_TEAM_INDEX = 2
 FOCA_NAMES = frozenset({"foca"})
 
+_FPN_STATE_MAP = {
+    "scheduled": MatchStatus.SCHEDULED,
+    "completed": MatchStatus.COMPLETED,
+    "postponed": MatchStatus.POSTPONED,
+    "cancelled": MatchStatus.CANCELLED,
+    "unknown": MatchStatus.UNKNOWN,
+}
+
+
+def map_fpn_state(state: str | None) -> MatchStatus:
+    """Map an explicit ArenaDisplay state label to the normalized status.
+
+    The repository only has observed numeric values (``"1"`` and ``"2"``)
+    without a documented meaning. They therefore intentionally remain outside
+    this mapping and use the historical score/date fallback in
+    :func:`scores_and_status`.
+    """
+    normalized = " ".join((state or "").casefold().replace("_", " ").replace("-", " ").split())
+    return _FPN_STATE_MAP.get(normalized, MatchStatus.UNKNOWN)
+
+
+def _uses_legacy_result_fallback(state: str | None) -> bool:
+    """Return whether the source value has no documented lifecycle meaning."""
+    normalized = (state or "").strip()
+    return not normalized or normalized.isdecimal()
+
 
 def scores_and_status(
     game: FPNGame, *, now: datetime
 ) -> tuple[int | None, int | None, MatchStatus]:
-    """Resolve result scores and status from gameTeams and gameDate."""
+    """Resolve scores/status, honoring explicit FPN lifecycle labels first."""
+    explicit_status = map_fpn_state(game.state)
+    if explicit_status in {MatchStatus.CANCELLED, MatchStatus.POSTPONED}:
+        return None, None, explicit_status
+
     complete_scores = game.home_score is not None and game.away_score is not None
+    if explicit_status is MatchStatus.COMPLETED:
+        return (
+            (game.home_score, game.away_score, MatchStatus.COMPLETED)
+            if complete_scores
+            else (None, None, MatchStatus.COMPLETED)
+        )
+
     if not complete_scores:
-        return None, None, MatchStatus.SCHEDULED
+        if explicit_status is MatchStatus.SCHEDULED or _uses_legacy_result_fallback(game.state):
+            return None, None, MatchStatus.SCHEDULED
+        return None, None, MatchStatus.UNKNOWN
 
     home_score = game.home_score
     away_score = game.away_score
@@ -39,7 +78,7 @@ def scores_and_status(
         return home_score, away_score, MatchStatus.COMPLETED
 
     if game.game_date is None:
-        return None, None, MatchStatus.SCHEDULED
+        return 0, 0, explicit_status if explicit_status is not MatchStatus.UNKNOWN else MatchStatus.COMPLETED
 
     if game.game_date.tzinfo is None or game.game_date.utcoffset() is None:
         # ArenaDisplay returns local wall time without an offset. Compare it with

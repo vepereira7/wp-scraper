@@ -11,11 +11,12 @@ O exportador devolve um dicionário compatível com `json.dumps`. O envelope con
 
 Cada jogo exporta os campos públicos do modelo: `external_id`, `source`,
 `source_url`, `season`, `category`, `competition`, `home`, `away`, `date`, `time`,
-`location`, `score_home`, `score_away` e `status`. Enums, datas e horas são
-serializados como strings.
+`location`, `score_home`, `score_away` e `status`. Enums, datas e horas conhecidas
+são serializados como strings.
 
-`location` é opcional. Quando a fonte não fornece o local, o campo é mantido no
-output com valor `null`.
+`time` e `location` são opcionais. Quando a hora ainda não está definida ou a
+fonte não fornece o local, o respetivo campo é mantido no output com valor
+`null`.
 
 ## Exemplo
 
@@ -47,6 +48,12 @@ output com valor `null`.
 
 O campo de auditoria `raw` não é exportado por defeito. Pode ser incluído
 explicitamente com `include_raw=True` para diagnóstico.
+
+O fluxo de publicação JSON + ICS valida `matches`, `match_count`, campos
+obrigatórios e identificadores únicos antes de substituir outputs. O ICS é
+validado quanto ao envelope VCALENDAR, contagem de VEVENTs e UIDs únicos. Uma
+resposta vazia falha por omissão; em qualquer erro os outputs anteriores são
+preservados.
 
 A aplicação WP Stats deverá consumir este contrato normalizado, e não a estrutura
 interna nem os detalhes de scraping deste projeto.

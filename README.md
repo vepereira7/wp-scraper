@@ -5,8 +5,9 @@ como FPN e ANNP, normalizar jogos e produzir outputs estáveis. Este repositóri
 separado da aplicação WP Stats e não depende dela.
 
 O projeto define um modelo e um contrato JSON normalizados. A integração FPN usa
-diretamente a API pública do ArenaDisplay, sem automação de browser, e não integra
-com serviços externos da aplicação WP Stats.
+diretamente a API pública do ArenaDisplay; a ANNP usa os fragmentos HTML dos
+endpoints públicos sazonais. Nenhuma das integrações usa browser em runtime ou
+depende de serviços externos da aplicação WP Stats.
 
 ## Estrutura
 
@@ -68,51 +69,53 @@ O contrato técnico está em [docs/output-contract.md](docs/output-contract.md).
 contrato para consumidores externos, com exemplo de export FPN, está em
 [docs/export_contract.md](docs/export_contract.md).
 
-## Publicar calendários ICS num servidor
+## Fluxo de produção JSON + ICS
 
-O script `scripts/update_calendars.sh` gera calendários ICS para publicação. Por
-omissão grava em `data/published_calendars`; no servidor configure
-`CALENDAR_OUTPUT_DIR=/var/www/waterpolo-calendars`. O script escreve primeiro um
-ficheiro temporário e move-o para o nome final após um export bem-sucedido.
-
-Sirva cada ficheiro no mesmo URL ao longo do tempo. Os utilizadores devem
-subscrever esse URL como calendário, em vez de importar o ficheiro manualmente;
-assim a aplicação de calendário pode procurar atualizações no URL fixo. Um
-servidor pode servir por IP público, sem domínio, por exemplo:
-
-```text
-http://<IP_PUBLICO>/calendars/foca-seniores-a1.ics
-```
-
-Exemplo de configuração Nginx:
-
-```nginx
-location /calendars/ {
-    alias /var/www/waterpolo-calendars/;
-    types {
-        text/calendar ics;
-    }
-    default_type text/calendar;
-    add_header Cache-Control "public, max-age=300";
-}
-```
-
-Exemplo de cron para atualizar de seis em seis horas:
-
-```cron
-0 */6 * * * /opt/waterpolo/scripts/update_calendars.sh >> /var/log/waterpolo-calendar.log 2>&1
-```
-
-O URL permanece fixo, mas as alterações não aparecem instantaneamente: dependem
-da frequência de atualização da aplicação de calendário. O UID estável ajuda a
-atualizar os eventos existentes. O `SEQUENCE` fica em zero enquanto não existir
-histórico para comparar exports.
-
-Localmente, pode escolher outro destino:
+O comando de produção faz uma única recolha do calendário selecionado, uma única
+normalização e gera os dois ficheiros a partir do mesmo snapshot de `Match`:
 
 ```console
-CALENDAR_OUTPUT_DIR=data/published_calendars ./scripts/update_calendars.sh
+uv run python -m waterpolo.main publish fpn \
+  --domain po01_26-27 \
+  --team FOCA \
+  --json-output data/published_calendars/fpn_po01_26-27_foca.json \
+  --ics-output data/published_calendars/foca-seniores-a1.ics
 ```
+
+ANNP usa o mesmo comando e o mesmo pipeline, selecionando uma competição por
+nome real ou ID:
+
+```console
+uv run python -m waterpolo.main publish annp \
+  --season 2627 \
+  --team FOCA \
+  --competition-id 1 \
+  --json-output data/published_calendars/annp-2627-juniores-foca.json \
+  --ics-output data/published_calendars/annp-2627-juniores-foca.ics
+```
+
+O script compatível `scripts/update_calendars.sh` executa este comando e aceita
+`CALENDAR_OUTPUT_DIR` para escolher o diretório de destino. Os nomes previstos
+para FOCA são `fpn_po01_26-27_foca.json` e `foca-seniores-a1.ics`.
+
+Antes da publicação, ambos os artefactos são escritos em staging e validados.
+Só depois são movidos para os destinos finais com `rename`; se a geração ou a
+validação falhar, os outputs anteriores ficam intactos. A publicação dos dois
+ficheiros usa backups temporários e rollback para não deixar um artefacto novo
+ao lado de outro antigo quando uma operação de rename falha.
+
+Um snapshot vazio é erro operacional por omissão: o comando termina com exit
+code diferente de zero e não substitui a última geração válida. O exit code é
+`0` apenas quando ambos os ficheiros foram validados e publicados. Erros são
+impressos no stderr e registados pelo `RunLogger`.
+
+O JSON exige envelope válido, contagem consistente, campos essenciais e
+`external_id` único. O ICS exige um `VEVENT` e um UID único por jogo, com a
+mesma contagem e os mesmos identificadores do JSON. O UID mantém a forma
+`{source}-{external_id}@waterpolo`, por exemplo `FPN-...` ou `ANNP-...`.
+
+Os comandos individuais `export fpn --format json` e `export fpn --format ics`
+continuam disponíveis para diagnóstico e uso isolado.
 
 ## Cliente FPN ArenaDisplay
 
@@ -152,6 +155,18 @@ contém apenas FOCA → Felgueiras, confirmado pelo
 [Município de Felgueiras](https://cm-felgueiras.pt/viver/desporto-e-lazer/oferta-desportiva/).
 Equipas ainda não verificadas ficam sem localização até serem adicionadas ao
 ficheiro. Esta resolução é exclusiva do fluxo FPN.
+
+## Cliente ANNP
+
+O adapter ANNP está em `src/waterpolo/scraper/annp/` e usa `httpx` para consultar
+`competicoes.php` e `calendario.php`. O site não expõe uma API JSON nem um ID de
+jogo no HTML público; a integração documenta e testa o identificador substituto
+estável usado nesse caso. Consulte [docs/annp.md](docs/annp.md) para endpoints,
+mapeamento de estados, seleção de escalão e limitações.
+
+A época lógica é independente do diretório da fonte. Para `2627`, o cliente tenta
+primeiro `provas2627` e usa temporariamente `provas2526` como fallback conhecido,
+validando sempre as datas como 2026/27.
 
 ## Roadmap
 

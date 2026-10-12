@@ -12,11 +12,20 @@ from time import monotonic
 class RunLogger:
     """Collect export run output and persist a final text report."""
 
-    def __init__(self, log_dir: Path, *, command: str, team: str, output_format: str):
+    def __init__(
+        self,
+        log_dir: Path,
+        *,
+        command: str,
+        team: str,
+        output_format: str,
+        source: str = "FPN",
+    ):
         self.log_dir = log_dir
         self.command = command
         self.team = team
         self.output_format = output_format
+        self.source = source.upper()
         self.started = datetime.now().astimezone()
         self._clock_started = monotonic()
         self._messages: list[str] = []
@@ -32,7 +41,10 @@ class RunLogger:
         self.log_dir.mkdir(parents=True, exist_ok=True)
         timestamp = self.started.strftime("%Y%m%d_%H%M%S")
         safe_team = "_".join(self.team.casefold().split()) or "team"
-        path = self.log_dir / f"{timestamp}_export_fpn_{safe_team}_{self.output_format}.txt"
+        safe_source = "_".join(self.source.casefold().split()) or "source"
+        path = self.log_dir / (
+            f"{timestamp}_export_{safe_source}_{safe_team}_{self.output_format}.txt"
+        )
         content = [
             f"Início: {self.started.isoformat(timespec='seconds')}",
             f"Comando: {self.command}",
@@ -53,7 +65,7 @@ class RunLogger:
     def error(self, exc: BaseException) -> None:
         rendered = traceback.format_exc()
         self._messages.append(f"Erro: {type(exc).__name__}: {exc}")
-        print(f"Erro ao exportar jogos FPN: {exc}", file=sys.stderr)
+        print(f"Erro ao exportar jogos {self.source}: {exc}", file=sys.stderr)
         self._error_details = [
             f"Tipo de erro: {type(exc).__name__}",
             f"Mensagem de erro: {exc}",

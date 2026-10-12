@@ -158,3 +158,19 @@ def test_uid_is_stable_when_match_date_changes(tmp_path: Path) -> None:
     assert next(line for line in original_lines if line.startswith("DTEND:")) != next(
         line for line in changed_lines if line.startswith("DTEND:")
     )
+
+
+def test_unknown_time_exports_date_only_event_with_stable_uid(tmp_path: Path) -> None:
+    output = tmp_path / "date-only.ics"
+
+    export_matches_ics(
+        [match(source=MatchSource.ANNP, external_id="2627-1-stable", time=None)],
+        output,
+    )
+
+    ics = output.read_text().replace("\n ", "")
+    assert "UID:ANNP-2627-1-stable@waterpolo" in ics
+    assert "DTSTART;VALUE=DATE:20261004" in ics
+    assert "DTEND;VALUE=DATE:20261005" in ics
+    assert "T000000" not in ics
+    assert "Hora: por definir" in ics

@@ -38,24 +38,29 @@ def export_matches_ics(
     ]
     generated = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     for match in matches:
-        if match.date is None or match.time is None:
-            raise ValueError(f"Match {match.external_id!r} has no date or time")
-        start_local = datetime.combine(match.date, match.time, tzinfo=PORTUGAL)
-        start_utc = start_local.astimezone(UTC)
-        end_utc = start_utc + timedelta(minutes=default_duration_minutes)
-        start = start_utc.strftime("%Y%m%dT%H%M%SZ")
-        end = end_utc.strftime("%Y%m%dT%H%M%SZ")
+        if match.date is None:
+            raise ValueError(f"Match {match.external_id!r} has no date")
+        if match.time is None:
+            start_line = f"DTSTART;VALUE=DATE:{match.date:%Y%m%d}"
+            end_date = match.date + timedelta(days=1)
+            end_line = f"DTEND;VALUE=DATE:{end_date:%Y%m%d}"
+        else:
+            start_local = datetime.combine(match.date, match.time, tzinfo=PORTUGAL)
+            start_utc = start_local.astimezone(UTC)
+            end_utc = start_utc + timedelta(minutes=default_duration_minutes)
+            start_line = f"DTSTART:{start_utc:%Y%m%dT%H%M%SZ}"
+            end_line = f"DTEND:{end_utc:%Y%m%dT%H%M%SZ}"
         lines.extend(
             [
                 "BEGIN:VEVENT",
-                f"UID:{_uid(match)}",
+                f"UID:{match_uid(match)}",
                 f"DTSTAMP:{generated}",
                 f"LAST-MODIFIED:{generated}",
                 # Sequence stays at zero because this exporter has no persisted
                 # history for comparing a new export with an earlier one.
                 "SEQUENCE:0",
-                f"DTSTART:{start}",
-                f"DTEND:{end}",
+                start_line,
+                end_line,
                 f"SUMMARY:{_escape(_summary(match))}",
                 f"DESCRIPTION:{_escape(_description(match))}",
             ]
@@ -71,7 +76,8 @@ def export_matches_ics(
     )
 
 
-def _uid(match: Match) -> str:
+def match_uid(match: Match) -> str:
+    """Return the stable UID used by the ICS contract."""
     if match.external_id:
         return f"{match.source.value}-{match.external_id}@waterpolo"
 
@@ -147,14 +153,19 @@ def _competition_prefix(match: Match) -> str | None:
 
 
 def _description(match: Match) -> str:
-    return "\n".join(
+    details = [
+        f"Competição: {match.competition}",
+        f"Categoria: {format_match_category(match.category)}",
+    ]
+    if match.time is None:
+        details.append("Hora: por definir")
+    details.extend(
         [
-            f"Competição: {match.competition}",
-            f"Categoria: {format_match_category(match.category)}",
             f"Estado: {match.status.value}",
             f"Fonte: {match.source.value}",
         ]
     )
+    return "\n".join(details)
 
 
 def _escape(value: str) -> str:

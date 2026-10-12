@@ -63,6 +63,15 @@ def test_export_preserves_missing_location_as_null() -> None:
     assert payload["matches"][0]["location"] is None
 
 
+def test_export_preserves_unknown_time_as_null() -> None:
+    match = make_match().model_copy(update={"time": None})
+
+    payload = export_matches_json([match])
+
+    assert payload["matches"][0]["date"] == "2026-10-04"
+    assert payload["matches"][0]["time"] is None
+
+
 def test_json_export_preserves_normalized_category() -> None:
     labels = {
         MatchCategory.SENIOR: "Seniores",

@@ -10,7 +10,7 @@ from waterpolo.scraper.fpn.errors import (
     FPNResponseError,
 )
 from waterpolo.scraper.fpn.models import FPNCompetition, FPNGame, FPNTeamIdentity
-from waterpolo.scraper.fpn.scraper import is_foca_team
+from waterpolo.scraper.fpn.scraper import is_foca_team, map_fpn_state
 
 __all__ = [
     "FPNArenaClient",
@@ -24,4 +24,5 @@ __all__ = [
     "FPNTeamIdentity",
     "extract_fpn_season",
     "is_foca_team",
+    "map_fpn_state",
 ]

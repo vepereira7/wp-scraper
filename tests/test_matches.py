@@ -84,6 +84,15 @@ def test_match_with_missing_location_is_valid() -> None:
     assert match.location is None
 
 
+def test_match_with_unknown_time_is_valid() -> None:
+    data = valid_match_data()
+    data["time"] = None
+
+    match = Match(**data)
+
+    assert match.time is None
+
+
 def test_json_serialization_formats_date_and_time() -> None:
     serialized = Match(**valid_match_data()).model_dump(mode="json")
 

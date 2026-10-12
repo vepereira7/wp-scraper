@@ -2,18 +2,35 @@
 
 O JSON é a interface pública entre este scraper e qualquer aplicação que consuma
 os calendários. A aplicação deve consumir apenas este contrato: não deve chamar a
-FPN nem depender da estrutura da API, de categorias brutas ou de detalhes do
-scraper. Os exporters recebem `list[Match]`; uma futura fonte ANNP deverá produzir
-o mesmo modelo e este mesmo JSON.
+FPN/ANNP nem depender da estrutura das fontes, de categorias brutas ou de detalhes
+do scraper. Os exporters recebem `list[Match]`; FPN e ANNP produzem o mesmo modelo
+e este mesmo JSON.
 
 ## Gerar
 
+Para gerar JSON e ICS a partir de uma única recolha:
+
 ```console
-uv run python -m waterpolo.main export fpn \
+uv run python -m waterpolo.main publish fpn \
   --domain po01_26-27 \
   --team FOCA \
-  --format json \
-  --output data/exports/fpn_po01_26-27_foca.json
+  --json-output data/published_calendars/fpn_po01_26-27_foca.json \
+  --ics-output data/published_calendars/foca-seniores-a1.ics
+```
+
+O comando individual `export fpn --format json` continua disponível quando só
+é necessário o JSON. O fluxo de produção rejeita uma resposta sem jogos e só
+substitui os dois outputs depois de validar ambos.
+
+ANNP usa o mesmo fluxo:
+
+```console
+uv run python -m waterpolo.main publish annp \
+  --season 2627 \
+  --team FOCA \
+  --competition-id 1 \
+  --json-output data/published_calendars/annp-2627-juniores-foca.json \
+  --ics-output data/published_calendars/annp-2627-juniores-foca.ics
 ```
 
 O envelope contém a hora UTC de geração, a fonte, a contagem e a lista de jogos:
@@ -44,14 +61,15 @@ O envelope contém a hora UTC de geração, a fonte, a contagem e a lista de jog
 }
 ```
 
-`match_count` corresponde ao tamanho de `matches`. Datas e horas são strings ISO
-(`YYYY-MM-DD` e `HH:MM:SS`). `generated_at` é ISO 8601 UTC terminado em `Z`.
+`match_count` corresponde ao tamanho de `matches`. Datas e horas conhecidas são
+strings ISO (`YYYY-MM-DD` e `HH:MM:SS`); `time` é `null` quando a data é conhecida
+mas a hora ainda não foi definida. `generated_at` é ISO 8601 UTC terminado em `Z`.
 Para FPN, `season` contém o identificador da época da app (`SYYZZ`), extraído do
 domain técnico: por exemplo `po01_26-27` resulta em `S2627`. O domain continua a
 ser usado para consultar a FPN e não é copiado para `Match.season`.
-`source_url` e `location` podem ser `null`; o local é resolvido quando os dados
-disponíveis permitem fazê-lo. Os dois scores são `null` enquanto não há resultado
-e são preenchidos em conjunto quando existe resultado.
+`source_url`, `time` e `location` podem ser `null`; o local é resolvido quando os
+dados disponíveis permitem fazê-lo. Os dois scores são `null` enquanto não há
+resultado e são preenchidos em conjunto quando existe resultado.
 
 ## Campos e valores
 
@@ -65,9 +83,13 @@ As categorias legíveis normalizadas incluem `Seniores`, `Juniores`, `Juvenis`,
 com todos os jogos normalizados. Categorias brutas recebidas da API não fazem
 parte deste contrato.
 
-`status` é serializado a partir do estado normalizado. Os valores atualmente
-previstos neste contrato de calendário são `SCHEDULED` e `COMPLETED`.
+`status` é serializado a partir do estado normalizado. Os valores suportados são
+`SCHEDULED`, `COMPLETED`, `POSTPONED`, `CANCELLED` e `UNKNOWN`. Para o FPN, os
+rótulos textuais correspondentes são mapeados explicitamente. Os valores
+numéricos `"1"` e `"2"` foram observados nos payloads existentes, mas não têm
+semântica documentada neste repositório; continuam a usar o fallback histórico
+de resultado/data. Outros valores não reconhecidos resultam em `UNKNOWN`, sem
+transformar estados de cancelamento ou adiamento em `SCHEDULED`.
 
-O envelope atualmente identifica a fonte de cada export (`FPN`). A arquitetura
-permite que exporters comuns aceitem qualquer lista de `Match`; uma fonte futura
-deve usar `ANNP` sem alterar a estrutura dos objetos.
+O envelope identifica a fonte de cada export (`FPN` ou `ANNP`). Os exporters
+comuns aceitam qualquer lista de `Match` sem alterar a estrutura dos objetos.

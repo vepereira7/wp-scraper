@@ -152,6 +152,41 @@ def test_game_with_score() -> None:
     assert game.away_score == 8
 
 
+@pytest.mark.parametrize(
+    ("state", "expected_status"),
+    [
+        ("SCHEDULED", MatchStatus.SCHEDULED),
+        ("COMPLETED", MatchStatus.COMPLETED),
+        ("POSTPONED", MatchStatus.POSTPONED),
+        ("CANCELLED", MatchStatus.CANCELLED),
+        ("unrecognised-state", MatchStatus.UNKNOWN),
+    ],
+)
+def test_to_matches_maps_explicit_fpn_states(state: str, expected_status: MatchStatus) -> None:
+    payload = game_response(home_score=None, away_score=None)
+    payload["state"] = state
+    game = parse_test_game(payload)
+
+    match = to_matches(
+        [game],
+        domain="po01_25-26",
+        now=datetime.fromisoformat("2026-01-01T12:00:00"),
+    )[0]
+
+    assert match.status is expected_status
+
+
+def test_cancelled_state_is_not_overridden_by_a_result() -> None:
+    payload = game_response(home_score=12, away_score=9)
+    payload["state"] = "CANCELLED"
+
+    match = to_matches([parse_test_game(payload)], domain="po01_25-26")[0]
+
+    assert match.status is MatchStatus.CANCELLED
+    assert match.score_home is None
+    assert match.score_away is None
+
+
 def test_to_matches_maps_senior_category_and_completed_result() -> None:
     payload = game_response(
         home_name="FOCA", away_name="CNPO B", home_score=18, away_score=11
@@ -168,6 +203,16 @@ def test_to_matches_maps_senior_category_and_completed_result() -> None:
     assert match.score_home == 18
     assert match.score_away == 11
     assert match.status is MatchStatus.COMPLETED
+
+
+def test_fpn_midnight_remains_a_real_time() -> None:
+    payload = game_response(home_score=None, away_score=None)
+    payload["gameDate"] = "2026-01-10T00:00:00"
+
+    match = to_matches([parse_test_game(payload)], domain="po01_25-26")[0]
+
+    assert match.time is not None
+    assert match.time.isoformat() == "00:00:00"
 
 
 def test_to_matches_maps_unknown_competition_category() -> None:

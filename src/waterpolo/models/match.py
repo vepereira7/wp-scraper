@@ -1,6 +1,9 @@
 """Normalized water polo match model."""
 
-from datetime import date, time
+from __future__ import annotations
+
+from datetime import date
+from datetime import time as dt_time
 from enum import Enum
 from typing import Any, Self
 
@@ -64,7 +67,7 @@ class Match(BaseModel):
     away: str
 
     date: date
-    time: time
+    time: dt_time | None = None
     location: str | None = None
 
     score_home: int | None = None
