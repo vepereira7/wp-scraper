@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-import re
-import unicodedata
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
 from pydantic import ValidationError
 
-from waterpolo.models import Match, MatchCategory, MatchSource, MatchStatus
+from waterpolo.models import (
+    Match,
+    MatchCategory,
+    MatchSource,
+    MatchStatus,
+    normalize_category,
+)
 from waterpolo.scraper.fpn.domain import extract_fpn_season
 from waterpolo.scraper.fpn.errors import FPNGameStructureError, FPNResponseError
 from waterpolo.scraper.fpn.models import FPNCompetition, FPNGame, FPNTeamIdentity
@@ -144,27 +148,11 @@ def to_matches(
 def map_fpn_category(
     raw_category: str | None, competition_display_name: str | None
 ) -> MatchCategory:
-    """Map ArenaDisplay category and competition title to a normalized category."""
-    raw = (raw_category or "").strip().casefold()
-    if raw == "senior":
-        return MatchCategory.SENIOR
-    if raw == "junior":
-        return MatchCategory.JUNIOR
-
-    display = unicodedata.normalize("NFKD", competition_display_name or "")
-    display = "".join(char for char in display if not unicodedata.combining(char))
-    display = re.sub(r"\s+", " ", display).strip().casefold()
-    category_matches = []
-    for pattern, category in (
-        (r"\binfant(?:il|is)\b", MatchCategory.INFANTIS),
-        (r"\bjuven(?:il|is)\b", MatchCategory.JUVENIS),
-        (r"\bjunior(?:es)?\b", MatchCategory.JUNIOR),
-    ):
-        if re.search(pattern, display):
-            category_matches.append(category)
-    if len(category_matches) != 1:
-        return MatchCategory.UNKNOWN
-    return category_matches[0]
+    """Normalize ArenaDisplay category, falling back to its competition title."""
+    category = normalize_category(raw_category)
+    if category is not MatchCategory.UNKNOWN:
+        return category
+    return normalize_category(competition_display_name)
 
 
 def _text(value: Any) -> str | None:

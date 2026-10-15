@@ -11,7 +11,7 @@ consumidores das diferenças entre fontes e é independente da aplicação WP St
 | Identificação | `source` | `MatchSource` | Sim | Fonte conhecida pelo parser |
 | Identificação | `source_url` | `str \| None` | Não | URL original do jogo |
 | Classificação | `season` | `str` | Sim | Pode ser derivada pelo scraper |
-| Classificação | `category` | `MatchCategory` | Sim | Escalão normalizado |
+| Classificação | `category` | `MatchCategory` | Sim | Escalão canónico, independente da nomenclatura da fonte |
 | Classificação | `competition` | `str` | Sim | Texto livre para permitir novas competições |
 | Equipas | `home` | `str` | Sim | Equipa da casa |
 | Equipas | `away` | `str` | Sim | Equipa visitante |
@@ -26,11 +26,27 @@ consumidores das diferenças entre fontes e é independente da aplicação WP St
 ## Enums
 
 - `MatchSource`: `FPN`, `ANNP`.
-- `MatchCategory`: `U12`, `U14`, `U16`, `U18`, `SENIOR`, `UNKNOWN`.
+- `MatchCategory`: `Sub-12`, `Sub-14`, `Sub-16`, `Sub-18`, `Seniores`, `Unknown`.
 - `MatchStatus`: `SCHEDULED`, `COMPLETED`, `POSTPONED`, `CANCELLED`, `UNKNOWN`.
 
 `UNKNOWN` permite processar valores ainda não mapeados sem alargar prematuramente
 os enums.
+
+A normalização de categorias é comum a todas as fontes e aplica este mapping:
+
+| Rótulo da fonte | Valor canónico em `Match.category` |
+| --- | --- |
+| `Seniores` | `Seniores` |
+| `Juniores` | `Sub-18` |
+| `Juvenis` | `Sub-16` |
+| `Infantis` | `Sub-14` |
+| `Cadetes` | `Sub-12` |
+
+Os valores canónicos, bem como as variantes inequívocas `U18`, `U16`, `U14`,
+`U12` e `Sub 18`, `Sub 16`, `Sub 14`, `Sub 12`, são idempotentes. Um valor
+desconhecido ou ambíguo não é convertido noutro escalão; os adapters usam
+`Unknown`, de acordo com o contrato existente. `competition` continua a conter
+o texto original da competição e não participa nesta conversão.
 
 No FPN, `FPNGame.state` é usado na normalização. Os rótulos textuais
 `SCHEDULED`, `COMPLETED`, `POSTPONED` e `CANCELLED` são reconhecidos; valores

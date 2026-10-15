@@ -28,6 +28,7 @@ from waterpolo.scraper.annp.scraper import (
     parse_competitions,
     to_matches,
 )
+from waterpolo.services.json_export import export_matches_json
 
 FIXTURES = Path(__file__).parent / "fixtures" / "annp"
 COMPETITIONS_HTML = (FIXTURES / "competitions.html").read_text()
@@ -146,7 +147,7 @@ def test_foca_filter_and_match_normalization() -> None:
     assert all("FOCA" in {match.home, match.away} for match in matches)
     assert matches[0].source is MatchSource.ANNP
     assert matches[0].season == "S2526"
-    assert matches[0].category is MatchCategory.JUNIOR
+    assert matches[0].category is MatchCategory.U18
     assert matches[0].competition == "Juniores Masculinos"
     assert matches[0].source_url.endswith("competicao=1&temjogos=1")
 
@@ -185,9 +186,9 @@ def test_annp_midnight_is_unknown_but_real_time_is_preserved() -> None:
     ("raw", "expected"),
     [
         ("Seniores Masculinos", MatchCategory.SENIOR),
-        ("Juniores Masculinos", MatchCategory.JUNIOR),
-        ("Juvenis Masculinos", MatchCategory.JUVENIS),
-        ("Infantis Mistos", MatchCategory.INFANTIS),
+        ("Juniores Masculinos", MatchCategory.U18),
+        ("Juvenis Masculinos", MatchCategory.U16),
+        ("Infantis Mistos", MatchCategory.U14),
         ("Sub-18 Femininos", MatchCategory.U18),
         ("Sub 16", MatchCategory.U16),
         ("U14", MatchCategory.U14),
@@ -197,6 +198,52 @@ def test_annp_midnight_is_unknown_but_real_time_is_preserved() -> None:
 )
 def test_category_mapping(raw: str, expected: MatchCategory) -> None:
     assert map_annp_category(raw) is expected
+
+
+@pytest.mark.parametrize(
+    ("identifier", "name", "fixture", "expected_category", "expected_ids"),
+    [
+        (
+            "1",
+            "Juniores Masculinos",
+            JUNIORES_HTML,
+            MatchCategory.U18,
+            [
+                "2526-1-8d7a8a247279e7b8",
+                "2526-1-b187aece845d1afd",
+                "2526-1-9d10ee638e003203",
+            ],
+        ),
+        (
+            "2",
+            "Juvenis Masculinos",
+            JUVENIS_HTML,
+            MatchCategory.U16,
+            ["2526-2-ee5a23efbe85ff3d", "2526-2-648dc26b2a0590ca"],
+        ),
+    ],
+)
+def test_annp_fixture_matches_keep_competition_and_stable_ids_with_canonical_category(
+    identifier: str,
+    name: str,
+    fixture: str,
+    expected_category: MatchCategory,
+    expected_ids: list[str],
+) -> None:
+    games = parse_calendar(
+        fixture,
+        season="2526",
+        competition=competition(identifier, name),
+        source_url=f"https://example.test?competicao={identifier}",
+    )
+    matches = to_matches(games, season="2526")
+    exported = export_matches_json(matches)["matches"]
+
+    assert [match.external_id for match in matches] == expected_ids
+    assert all(match.competition == name for match in matches)
+    assert all(match.category is expected_category for match in matches)
+    assert all(item["category"] == expected_category.value for item in exported)
+    assert all(item["competition"] == name for item in exported)
 
 
 @pytest.mark.parametrize(

@@ -75,9 +75,10 @@ def test_export_preserves_unknown_time_as_null() -> None:
 def test_json_export_preserves_normalized_category() -> None:
     labels = {
         MatchCategory.SENIOR: "Seniores",
-        MatchCategory.JUNIOR: "Juniores",
-        MatchCategory.INFANTIS: "Infantis",
-        MatchCategory.JUVENIS: "Juvenis",
+        MatchCategory.U18: "Sub-18",
+        MatchCategory.U16: "Sub-16",
+        MatchCategory.U14: "Sub-14",
+        MatchCategory.U12: "Sub-12",
         MatchCategory.UNKNOWN: "Unknown",
     }
     for category, expected_label in labels.items():
@@ -87,14 +88,14 @@ def test_json_export_preserves_normalized_category() -> None:
 
 
 def test_json_category_is_shared_label_for_ics(tmp_path: Path) -> None:
-    match = make_match().model_copy(update={"category": MatchCategory.JUNIOR})
+    match = make_match().model_copy(update={"category": MatchCategory.U18})
     json_category = export_matches_json([match])["matches"][0]["category"]
     ics_path = tmp_path / "matches.ics"
     export_matches_ics([match], ics_path)
     ics = ics_path.read_text().replace("\n ", "")
     description = next(line for line in ics.splitlines() if line.startswith("DESCRIPTION:"))
 
-    assert json_category == "Juniores"
+    assert json_category == "Sub-18"
     assert f"Categoria: {json_category}" in description
 
 
@@ -102,15 +103,15 @@ def test_json_category_is_shared_label_for_ics(tmp_path: Path) -> None:
     ("raw_category", "competition_name", "expected"),
     [
         ("senior", "CAMPEONATO PORTUGAL A2 MASCULINOS", "Seniores"),
-        ("junior", "CAMPEONATO PORTUGAL JUNIORES MASCULINOS", "Juniores"),
-        ("junior", "CAMPEONATO PORTUGAL JUNIOR 2025-2026", "Juniores"),
-        ("junior", "CAMPEONATO PORTUGAL JÚNIOR 2025-2026", "Juniores"),
-        ("under15", "CAMPEONATO INFANTIS", "Infantis"),
-        ("under15", "CAMPEONATO PORTUGAL INFANTIL 2025-2026", "Infantis"),
-        ("under15", "CAMPEONATO JUVENIS", "Juvenis"),
-        ("under15", "CAMPEONATO PORTUGAL JUVENIL 2025-2026", "Juvenis"),
+        ("junior", "CAMPEONATO PORTUGAL JUNIORES MASCULINOS", "Sub-18"),
+        ("junior", "CAMPEONATO PORTUGAL JUNIOR 2025-2026", "Sub-18"),
+        ("junior", "CAMPEONATO PORTUGAL JÚNIOR 2025-2026", "Sub-18"),
+        ("under15", "CAMPEONATO INFANTIS", "Sub-14"),
+        ("under15", "CAMPEONATO PORTUGAL INFANTIL 2025-2026", "Sub-14"),
+        ("under15", "CAMPEONATO JUVENIS", "Sub-16"),
+        ("under15", "CAMPEONATO PORTUGAL JUVENIL 2025-2026", "Sub-16"),
         ("under15", "CAMPEONATO SUB 15", "Unknown"),
-        (None, "CAMPEONATO INFANTIS", "Infantis"),
+        (None, "CAMPEONATO INFANTIS", "Sub-14"),
         (None, "CAMPEONATO PORTUGAL X 2025-2026", "Unknown"),
     ],
 )
@@ -143,9 +144,9 @@ def test_fpn_category_labels_are_shared_by_json_and_ics(
     summary = next(line for line in ics.splitlines() if line.startswith("SUMMARY:"))
     expected_prefix = {
         "Seniores": "A2 |",
-        "Juniores": "U18 |",
-        "Juvenis": "U16 |",
-        "Infantis": "U14 |",
+        "Sub-18": "U18 |",
+        "Sub-16": "U16 |",
+        "Sub-14": "U14 |",
         "Unknown": "Foca x CFP",
     }[expected]
 

@@ -97,7 +97,7 @@ def test_annp_publish_uses_shared_json_ics_contract(tmp_path: Path, monkeypatch)
     assert payload["match_count"] == 1
     assert payload["matches"][0]["source"] == "ANNP"
     assert payload["matches"][0]["season"] == "S2627"
-    assert payload["matches"][0]["category"] == "Juniores"
+    assert payload["matches"][0]["category"] == "Sub-18"
     assert payload["matches"][0]["external_id"] == "2627-1-stable"
     ics = ics_output.read_text()
     assert "UID:ANNP-2627-1-stable@waterpolo" in ics

@@ -78,9 +78,9 @@ def test_a1_summary_and_no_score_description(tmp_path: Path) -> None:
 
 def test_formation_summaries_use_age_group_prefixes(tmp_path: Path) -> None:
     cases = (
-        (MatchCategory.JUNIOR, "CAMPEONATO PORTUGAL JUNIORES MASCULINOS", "U18"),
-        (MatchCategory.JUVENIS, "CAMPEONATO PORTUGAL JUVENIS", "U16"),
-        (MatchCategory.INFANTIS, "CAMPEONATO PORTUGAL INFANTIS", "U14"),
+        (MatchCategory.U18, "CAMPEONATO PORTUGAL JUNIORES MASCULINOS", "U18"),
+        (MatchCategory.U16, "CAMPEONATO PORTUGAL JUVENIS", "U16"),
+        (MatchCategory.U14, "CAMPEONATO PORTUGAL INFANTIS", "U14"),
     )
     for category, competition, prefix in cases:
         output = tmp_path / f"{prefix}.ics"
@@ -93,9 +93,9 @@ def test_formation_summaries_use_age_group_prefixes(tmp_path: Path) -> None:
         assert f"X-WR-CALNAME:{competition}" in ics
         assert f"NAME:{competition}" in ics
         label = {
-            MatchCategory.JUNIOR: "Juniores",
-            MatchCategory.JUVENIS: "Juvenis",
-            MatchCategory.INFANTIS: "Infantis",
+            MatchCategory.U18: "Sub-18",
+            MatchCategory.U16: "Sub-16",
+            MatchCategory.U14: "Sub-14",
         }[category]
         assert f"Categoria: {label}" in ics.replace("\n ", "")
         assert competition not in next(

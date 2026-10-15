@@ -31,7 +31,7 @@ fonte não fornece o local, o respetivo campo é mantido no output com valor
       "source": "FPN",
       "source_url": "https://example.test/fpn/123",
       "season": "S2627",
-      "category": "U16",
+      "category": "Sub-16",
       "competition": "Campeonato Nacional",
       "home": "FOCA",
       "away": "Vitória SC",
@@ -48,6 +48,11 @@ fonte não fornece o local, o respetivo campo é mantido no output com valor
 
 O campo de auditoria `raw` não é exportado por defeito. Pode ser incluído
 explicitamente com `include_raw=True` para diagnóstico.
+
+`category` usa sempre os valores canónicos `Seniores`, `Sub-18`, `Sub-16`,
+`Sub-14`, `Sub-12` ou `Unknown`, independentemente do rótulo usado pela fonte.
+Em particular, `Juniores`, `Juvenis`, `Infantis` e `Cadetes` são exportados como
+`Sub-18`, `Sub-16`, `Sub-14` e `Sub-12`. O campo `competition` não é normalizado.
 
 O fluxo de publicação JSON + ICS valida `matches`, `match_count`, campos
 obrigatórios e identificadores únicos antes de substituir outputs. O ICS é

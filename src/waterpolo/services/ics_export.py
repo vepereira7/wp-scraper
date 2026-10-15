@@ -121,12 +121,10 @@ def _normalized_competition_name(value: str) -> str:
 
 def _competition_prefix(match: Match) -> str | None:
     category_prefixes = {
-        MatchCategory.JUNIOR: "U18",
-        MatchCategory.JUVENIS: "U16",
-        MatchCategory.INFANTIS: "U14",
         MatchCategory.U18: "U18",
         MatchCategory.U16: "U16",
         MatchCategory.U14: "U14",
+        MatchCategory.U12: "U12",
     }
     if match.category in category_prefixes:
         return category_prefixes[match.category]

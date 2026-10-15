@@ -9,37 +9,14 @@ from typing import Any, Self
 
 from pydantic import BaseModel, field_validator, model_validator
 
+from waterpolo.models.category import MatchCategory, normalize_category
+
 
 class MatchSource(str, Enum):
     """Supported match data sources."""
 
     FPN = "FPN"
     ANNP = "ANNP"
-
-
-class MatchCategory(str, Enum):
-    """Known age and senior match categories."""
-
-    U12 = "U12"
-    U14 = "U14"
-    U16 = "U16"
-    U18 = "U18"
-    SENIOR = "SENIOR"
-    JUNIOR = "JUNIOR"
-    JUVENIS = "JUVENIS"
-    INFANTIS = "INFANTIS"
-    UNKNOWN = "UNKNOWN"
-
-
-def format_match_category(category: MatchCategory) -> str:
-    """Return the Portuguese display label for a normalized category."""
-    return {
-        MatchCategory.SENIOR: "Seniores",
-        MatchCategory.JUNIOR: "Juniores",
-        MatchCategory.JUVENIS: "Juvenis",
-        MatchCategory.INFANTIS: "Infantis",
-        MatchCategory.UNKNOWN: "Unknown",
-    }.get(category, category.value)
 
 
 class MatchStatus(str, Enum):
@@ -76,6 +53,19 @@ class Match(BaseModel):
     status: MatchStatus = MatchStatus.SCHEDULED
 
     raw: dict[str, Any] | None = None
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def validate_category(cls, value: Any) -> Any:
+        """Canonicalize known aliases while retaining rejection of unknown strings."""
+        if isinstance(value, MatchCategory):
+            return value
+        normalized = normalize_category(value) if isinstance(value, str) else value
+        if normalized is not MatchCategory.UNKNOWN:
+            return normalized
+        if isinstance(value, str) and value.strip().casefold() == "unknown":
+            return MatchCategory.UNKNOWN
+        return value
 
     @field_validator(
         "external_id",

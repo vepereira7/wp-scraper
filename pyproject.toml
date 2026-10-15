@@ -28,3 +28,6 @@ packages = ["src/waterpolo"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/waterpolo/scraper/fpn/fpn_venues.json" = "waterpolo/scraper/fpn/fpn_venues.json"
+"src/waterpolo/report/assets/foca-logo.png" = "waterpolo/report/assets/foca-logo.png"
+"src/waterpolo/services/templates/calendar_report.html" = "waterpolo/services/templates/calendar_report.html"
+"src/waterpolo/services/templates/calendar_report.css" = "waterpolo/services/templates/calendar_report.css"

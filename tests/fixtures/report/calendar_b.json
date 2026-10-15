@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-10-01T00:00:00Z",
+  "source": "ANNP",
+  "match_count": 1,
+  "matches": [
+    {
+      "external_id": "junior-1",
+      "source": "ANNP",
+      "source_url": null,
+      "season": "S2627",
+      "category": "Sub-18",
+      "competition": "Juniores Masculinos",
+      "home": "FOCA & Amigos",
+      "away": "PPA",
+      "date": "2026-10-17",
+      "time": "10:00:00",
+      "location": "Fluvial",
+      "score_home": 22,
+      "score_away": 3,
+      "status": "COMPLETED"
+    }
+  ]
+}

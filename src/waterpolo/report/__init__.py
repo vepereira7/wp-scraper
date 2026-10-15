@@ -1,0 +1,2 @@
+"""Offline calendar report command."""
+

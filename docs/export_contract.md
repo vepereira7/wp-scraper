@@ -77,11 +77,11 @@ Cada jogo inclui `external_id`, `source`, `source_url`, `season`, `category`,
 `competition`, `home`, `away`, `date`, `time`, `location`, `score_home`,
 `score_away` e `status`. O campo interno de auditoria `raw` não é exportado.
 
-As categorias legíveis normalizadas incluem `Seniores`, `Juniores`, `Juvenis`,
-`Infantis` e `Unknown`. O modelo também admite os rótulos de escalão `U12`, `U14`,
-`U16` e `U18`; consumidores devem aceitar estes valores para manter compatibilidade
-com todos os jogos normalizados. Categorias brutas recebidas da API não fazem
-parte deste contrato.
+As categorias canónicas são `Seniores`, `Sub-18`, `Sub-16`, `Sub-14`, `Sub-12`
+e `Unknown`. A normalização comum a todas as fontes converte `Juniores` em
+`Sub-18`, `Juvenis` em `Sub-16`, `Infantis` em `Sub-14` e `Cadetes` em `Sub-12`;
+`Seniores` permanece `Seniores`. Categorias brutas recebidas da API não fazem
+parte deste contrato. O texto de `competition` é preservado sem alterações.
 
 `status` é serializado a partir do estado normalizado. Os valores suportados são
 `SCHEDULED`, `COMPLETED`, `POSTPONED`, `CANCELLED` e `UNKNOWN`. Para o FPN, os

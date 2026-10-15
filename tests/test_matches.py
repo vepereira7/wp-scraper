@@ -32,6 +32,33 @@ def test_create_valid_match() -> None:
 
 
 @pytest.mark.parametrize(
+    ("raw_category", "expected"),
+    [
+        ("Juniores", MatchCategory.U18),
+        ("Juvenis", MatchCategory.U16),
+        ("Infantis", MatchCategory.U14),
+        ("Cadetes", MatchCategory.U12),
+        ("Seniores", MatchCategory.SENIOR),
+    ],
+)
+def test_match_canonicalizes_known_category_aliases(
+    raw_category: str, expected: MatchCategory
+) -> None:
+    data = valid_match_data()
+    data["category"] = raw_category
+
+    assert Match(**data).category is expected
+
+
+def test_match_still_rejects_an_unknown_category_string() -> None:
+    data = valid_match_data()
+    data["category"] = "Absolutos"
+
+    with pytest.raises(ValidationError):
+        Match(**data)
+
+
+@pytest.mark.parametrize(
     "field",
     ["external_id", "season", "competition", "home", "away"],
 )

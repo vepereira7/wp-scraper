@@ -1,0 +1,39 @@
+{
+  "generated_at": "2026-10-01T00:00:00Z",
+  "source": "FPN",
+  "match_count": 2,
+  "matches": [
+    {
+      "external_id": "senior-2",
+      "source": "FPN",
+      "source_url": null,
+      "season": "S2627",
+      "category": "Seniores",
+      "competition": "Campeonato A1",
+      "home": "FOCA",
+      "away": "CWP",
+      "date": "2027-01-09",
+      "time": "17:30:00",
+      "location": "Felgueiras",
+      "score_home": null,
+      "score_away": null,
+      "status": "SCHEDULED"
+    },
+    {
+      "external_id": "senior-1",
+      "source": "FPN",
+      "source_url": null,
+      "season": "S2627",
+      "category": "Seniores",
+      "competition": "Campeonato A1",
+      "home": "FOCA",
+      "away": "SCP",
+      "date": "2026-10-17",
+      "time": null,
+      "location": "",
+      "score_home": null,
+      "score_away": null,
+      "status": "SCHEDULED"
+    }
+  ]
+}

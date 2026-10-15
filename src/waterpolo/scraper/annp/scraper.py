@@ -12,7 +12,13 @@ from hashlib import sha256
 from bs4 import BeautifulSoup, Tag
 from pydantic import ValidationError
 
-from waterpolo.models import Match, MatchCategory, MatchSource, MatchStatus
+from waterpolo.models import (
+    Match,
+    MatchCategory,
+    MatchSource,
+    MatchStatus,
+    normalize_category,
+)
 from waterpolo.scraper.annp.domain import (
     annp_season_bounds,
     annp_season_label,
@@ -247,20 +253,8 @@ def map_annp_state(state: str | None) -> MatchStatus:
 
 
 def map_annp_category(value: str) -> MatchCategory:
-    """Map real ANNP competition labels to the existing normalized categories."""
-    normalized = _normalized_text(value)
-    patterns = (
-        (r"\bsenior(?:es)?\b", MatchCategory.SENIOR),
-        (r"\bjunior(?:es)?\b", MatchCategory.JUNIOR),
-        (r"\bjuven(?:il|is)\b", MatchCategory.JUVENIS),
-        (r"\binfant(?:il|is)\b", MatchCategory.INFANTIS),
-        (r"\b(?:sub|u)[ -]?18\b", MatchCategory.U18),
-        (r"\b(?:sub|u)[ -]?16\b", MatchCategory.U16),
-        (r"\b(?:sub|u)[ -]?14\b", MatchCategory.U14),
-        (r"\b(?:sub|u)[ -]?12\b", MatchCategory.U12),
-    )
-    matches = [category for pattern, category in patterns if re.search(pattern, normalized)]
-    return matches[0] if len(matches) == 1 else MatchCategory.UNKNOWN
+    """Normalize a real ANNP competition label through the shared mapping."""
+    return normalize_category(value)
 
 
 def filter_team_games(games: Sequence[ANNPGame], team: str) -> list[ANNPGame]:

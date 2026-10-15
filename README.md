@@ -117,6 +117,14 @@ mesma contagem e os mesmos identificadores do JSON. O UID mantém a forma
 Os comandos individuais `export fpn --format json` e `export fpn --format ics`
 continuam disponíveis para diagnóstico e uso isolado.
 
+O orquestrador usado pelo timer de produção está versionado em
+`scripts/run_production_update.py`. Adiciona lock global, staging por calendário,
+segunda validação, import autenticado no WP Stats, snapshot interno em
+`/var/lib/waterpolo/current` e publicação atómica apenas do ICS em
+`/var/www/waterpolo-calendars`.
+A configuração, variáveis de ambiente, paths e comportamento de rollback estão
+documentados em [docs/production-runner.md](docs/production-runner.md).
+
 ## Cliente FPN ArenaDisplay
 
 O cliente mantém uma ligação `httpx` reutilizável, resolve a competição pelo
