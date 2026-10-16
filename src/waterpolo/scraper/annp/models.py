@@ -1,6 +1,7 @@
 """Source-specific models for the ANNP HTML endpoints."""
 
-from datetime import date, time
+from datetime import date
+from datetime import time as dt_time
 
 from pydantic import BaseModel, ConfigDict
 
@@ -26,7 +27,7 @@ class ANNPGame(BaseModel):
     competition_name: str
     competition_category: str
     date: date
-    time: time
+    time: dt_time | None
     home_team_name: str
     away_team_name: str
     home_score: int | None = None

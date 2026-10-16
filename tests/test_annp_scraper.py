@@ -7,6 +7,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from bs4 import BeautifulSoup, Tag
 
 from waterpolo.models import MatchCategory, MatchSource, MatchStatus
 from waterpolo.scraper.annp import (
@@ -21,6 +22,7 @@ from waterpolo.scraper.annp import (
     normalize_annp_season,
 )
 from waterpolo.scraper.annp.scraper import (
+    _parse_time,
     filter_team_games,
     map_annp_category,
     map_annp_state,
@@ -28,6 +30,7 @@ from waterpolo.scraper.annp.scraper import (
     parse_competitions,
     to_matches,
 )
+from waterpolo.services.ics_export import export_matches_ics
 from waterpolo.services.json_export import export_matches_json
 
 FIXTURES = Path(__file__).parent / "fixtures" / "annp"
@@ -35,6 +38,12 @@ COMPETITIONS_HTML = (FIXTURES / "competitions.html").read_text()
 JUNIORES_HTML = (FIXTURES / "calendar_juniores.html").read_text()
 JUVENIS_HTML = (FIXTURES / "calendar_juvenis.html").read_text()
 EMPTY_HTML = (FIXTURES / "empty_calendar.html").read_text()
+RECENT_TIME_PLACEHOLDER_HTML = (
+    FIXTURES / "calendar_juniores_2627_time_placeholder.html"
+).read_text()
+RECENT_SINGLE_DIGIT_MINUTE_HTML = (
+    FIXTURES / "calendar_juvenis_2627_single_digit_minute.html"
+).read_text()
 JUNIORES_2627_HTML = JUNIORES_HTML.replace("2025", "2026")
 
 
@@ -61,6 +70,19 @@ def parse_juniores(html: str = JUNIORES_HTML):
             "?competicao=1&temjogos=1"
         ),
     )
+
+
+def parse_time_element(time_element: str | None) -> time | None:
+    element = time_element or ""
+    soup = BeautifulSoup(
+        "<div class='match-card'><div class='match-header'>"
+        "<span class='local-info'><span>Fluvial</span></span>"
+        f"{element}</div></div>",
+        "lxml",
+    )
+    card = soup.select_one(".match-card")
+    assert isinstance(card, Tag)
+    return _parse_time(card)
 
 
 @pytest.mark.parametrize("season", ["2526", "S2526", "s2526"])
@@ -109,6 +131,103 @@ def test_calendar_parses_dates_times_locations_scores_and_states() -> None:
     assert games[2].location is None
     assert (games[2].home_score, games[2].away_score) == (None, None)
     assert map_annp_state(games[2].state) is MatchStatus.SCHEDULED
+
+
+@pytest.mark.parametrize(
+    ("time_element", "expected"),
+    [
+        ("<span>⏰ 9:0</span>", time(9, 0)),
+        ("<span>⏰ 9:5</span>", time(9, 5)),
+        ("<span>⏰ 9:30</span>", time(9, 30)),
+        ("<span>⏰ 09:0</span>", time(9, 0)),
+        ("<span>⏰ 09:05</span>", time(9, 5)),
+        ("<span>⏰ 14:5</span>", time(14, 5)),
+        ("<span>⏰ 14:30</span>", time(14, 30)),
+        ("<span>⏰ 0:0</span>", None),
+        ("<span>⏰ 00:00</span>", None),
+        (None, None),
+        ("<span></span>", None),
+        ("<span>   \n  </span>", None),
+        ("<span>⏰ ----</span>", None),
+    ],
+)
+def test_parse_time_accepts_valid_and_known_undefined_values(
+    time_element: str | None, expected: time | None
+) -> None:
+    assert parse_time_element(time_element) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "25:00",
+        "12:60",
+        "9:",
+        ":30",
+        "9:000",
+        "abc",
+        "9h30",
+        "-1:30",
+        "09:5x",
+    ],
+)
+def test_parse_time_rejects_present_invalid_value(value: str) -> None:
+    with pytest.raises(ANNPResponseError, match="Invalid ANNP time"):
+        parse_time_element(f"<span>⏰ {value}</span>")
+
+
+def test_parse_time_rejects_unexpected_markup() -> None:
+    with pytest.raises(ANNPResponseError, match="unexpected time structure"):
+        parse_time_element("<div>⏰ 14:30</div>")
+
+
+def test_recent_calendar_keeps_all_games_when_one_time_is_undefined(
+    tmp_path: Path,
+) -> None:
+    games = parse_calendar(
+        RECENT_TIME_PLACEHOLDER_HTML,
+        season="2627",
+        competition=competition(),
+        source_url=(
+            "https://provas.annp.pt/provas2526/polo/calendario.php"
+            "?competicao=1&temjogos=1"
+        ),
+    )
+
+    assert len(games) == 3
+    assert [game.time for game in games] == [time(9, 30), None, time(14, 30)]
+
+    matches = to_matches(games, season="2627")
+    payload = export_matches_json(matches, source="ANNP")
+    assert [item["time"] for item in payload["matches"]] == [
+        "09:30:00",
+        None,
+        "14:30:00",
+    ]
+
+    output = tmp_path / "recent-annp.ics"
+    export_matches_ics(matches, output)
+    ics = output.read_text().replace("\n ", "")
+    assert "DTSTART;VALUE=DATE:20261024" in ics
+    assert "DTEND;VALUE=DATE:20261025" in ics
+    assert ics.count("BEGIN:VEVENT") == 3
+
+
+def test_recent_calendar_parses_single_digit_minute() -> None:
+    games = parse_calendar(
+        RECENT_SINGLE_DIGIT_MINUTE_HTML,
+        season="2627",
+        competition=competition("2", "Juvenis Masculinos"),
+        source_url=(
+            "https://provas.annp.pt/provas2526/polo/calendario.php"
+            "?competicao=2&temjogos=1"
+        ),
+    )
+
+    assert len(games) == 1
+    assert games[0].date == date(2027, 1, 10)
+    assert (games[0].home_team_name, games[0].away_team_name) == ("CNPO", "LSXXI")
+    assert games[0].time == time(9, 0)
 
 
 def test_external_id_ignores_schedule_result_and_state_changes() -> None:

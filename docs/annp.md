@@ -50,12 +50,18 @@ Os estados observados são mapeados para a enumeração partilhada:
 
 O UID ICS é sempre `ANNP-{external_id}@waterpolo`.
 
-Na ANNP, `00:00` é um valor de apresentação que significa que a hora ainda não
-foi definida. O adapter converte exclusivamente esse valor ANNP para
-`Match.time=None`; horas reais permanecem intactas e a regra não é aplicada à
-FPN. O JSON contém `"time": null` e o ICS comum produz um VEVENT de data
-(`DTSTART;VALUE=DATE` e `DTEND;VALUE=DATE` no dia seguinte), preservando o mesmo
-UID quando a fonte publicar posteriormente uma hora real.
+Na ANNP, `00:00`, `----` e a ausência do elemento de hora ou do seu conteúdo
+são representações que significam que a hora ainda não foi definida. O adapter
+converte exclusivamente estes casos conhecidos para `Match.time=None`; horas
+reais permanecem intactas, valores não vazios desconhecidos continuam a ser
+rejeitados e a regra não é aplicada à FPN. O JSON contém `"time": null` e o ICS
+comum produz um VEVENT de data (`DTSTART;VALUE=DATE` e `DTEND;VALUE=DATE` no dia
+seguinte), preservando o mesmo UID quando a fonte publicar posteriormente uma
+hora real.
+
+As horas numéricas aceitam um ou dois dígitos em cada componente (`H:M`,
+`H:MM`, `HH:M` ou `HH:MM`), conforme observado no valor público `9:0`. Horas e
+minutos continuam limitados aos intervalos `0..23` e `0..59`.
 
 ## Época lógica e source path
 

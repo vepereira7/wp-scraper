@@ -43,6 +43,7 @@ _MONTHS = {
 }
 _EMPTY_CALENDAR_TEXT = "nao existem jogos definidos"
 _EMPTY_LOCATION_VALUES = frozenset({"", "-", "--", "---", "----", "-----", "—"})
+_EMPTY_TIME_VALUES = frozenset({"", "00:00", "----"})
 
 
 def _normalized_text(value: str | None) -> str:
@@ -192,16 +193,43 @@ def _parse_date(value: str) -> date:
         raise ANNPResponseError(f"Invalid ANNP date {value!r}") from exc
 
 
-def _parse_time(card: Tag) -> time:
+def _parse_time(card: Tag) -> time | None:
     header = card.select_one(".match-header")
-    value = header.get_text(" ", strip=True) if header else ""
-    match = re.search(r"\b(\d{1,2}):(\d{2})\b", value)
+    if header is None:
+        raise ANNPResponseError("ANNP match card is missing its header")
+
+    header_elements = header.find_all(recursive=False)
+    time_nodes = [
+        node
+        for node in header_elements
+        if node.name == "span" and "local-info" not in node.get("class", [])
+    ]
+    unexpected_nodes = [
+        node
+        for node in header_elements
+        if not (node.name == "span" and "local-info" in node.get("class", []))
+        and node not in time_nodes
+    ]
+    if unexpected_nodes or len(time_nodes) > 1:
+        raise ANNPResponseError("ANNP match card has an unexpected time structure")
+    if not time_nodes:
+        return None
+
+    raw_value = time_nodes[0].get_text(" ", strip=True)
+    value = " ".join(raw_value.split())
+    if value.startswith("⏰"):
+        value = value.removeprefix("⏰").strip()
+    if value in _EMPTY_TIME_VALUES:
+        return None
+
+    match = re.fullmatch(r"([0-9]{1,2}):([0-9]{1,2})", value)
     if match is None:
-        raise ANNPResponseError("ANNP match card is missing a valid time")
+        raise ANNPResponseError(f"Invalid ANNP time {raw_value!r}")
     try:
-        return time(int(match.group(1)), int(match.group(2)))
+        parsed_time = time(int(match.group(1)), int(match.group(2)))
     except ValueError as exc:
-        raise ANNPResponseError(f"Invalid ANNP time {match.group(0)!r}") from exc
+        raise ANNPResponseError(f"Invalid ANNP time {raw_value!r}") from exc
+    return None if parsed_time == time.min else parsed_time
 
 
 def _parse_location(card: Tag) -> str | None:
@@ -287,10 +315,11 @@ def to_matches(games: Sequence[ANNPGame], *, season: str) -> list[Match]:
             home=game.home_team_name,
             away=game.away_team_name,
             date=game.date,
-            # ANNP uses 00:00 as a placeholder for a time that has not yet
-            # been scheduled. Keep this source-specific semantic out of the
-            # shared model and exporters.
-            time=None if game.time == time.min else game.time,
+            # ANNP uses known empty values as placeholders for a time that has
+            # not yet been scheduled. Keep this source-specific semantic out
+            # of the shared model and exporters. Retain the time.min fallback
+            # for ANNPGame values constructed outside the HTML parser.
+            time=None if game.time in {None, time.min} else game.time,
             location=game.location,
             score_home=game.home_score,
             score_away=game.away_score,
