@@ -19,8 +19,8 @@ uv run python -m waterpolo.report \
 aceita o JSON próprio das ações de Benjamins, também no formato `LABEL=PATH`.
 O relatório ordena jogos e ações cronologicamente, com horas indefinidas após
 horas conhecidas do mesmo dia. Quando há schedules, a tabela apresenta
-`Data | Escalão | Jogo/Ação | Hora | Local`; as ações aparecem como
-`Ação de Benjamins`, sem equipas fictícias. Sem schedules, o layout atual dos
+`Data | Escalão | Jogo | Hora | Local`; nas linhas de Benjamins, a coluna
+`Jogo` apresenta apenas `-`, sem equipas fictícias. Sem schedules, o layout atual dos
 jogos é preservado. Hora ou local indefinido continua a aparecer como
 `Por definir`.
 

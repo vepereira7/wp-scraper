@@ -185,7 +185,7 @@ def _render_month(group: MonthGroup, *, action_layout: bool) -> str:
           <tr>
             <th scope="col">Data</th>
             <th scope="col">Escalão</th>
-            <th scope="col">Jogo/Ação</th>
+            <th scope="col">Jogo</th>
             <th scope="col">Hora</th>
             <th scope="col">Local</th>
           </tr>

@@ -251,8 +251,9 @@ def test_report_combines_matches_and_actions_in_date_order(tmp_path: Path) -> No
     ) == 0
     rendered = html_path.read_text()
     assert "Quadro de Ações 2026/2027" in rendered
-    assert "Ação de Benjamins" in rendered
-    assert "Jogo/Ação" in rendered
+    assert "Ação de Benjamins" not in rendered
+    assert "Jogo/Ação" not in rendered
+    assert ">Jogo<" in rendered
     assert "-----" not in rendered
     assert "FOCA &amp; Amigos" in rendered
     soup = BeautifulSoup(rendered, "html.parser")
@@ -265,5 +266,5 @@ def test_report_combines_matches_and_actions_in_date_order(tmp_path: Path) -> No
         for row in rows
     ]
     assert dates == sorted(dates)
-    assert any(row[1:3] == ["Benjamins", "Ação de Benjamins"] for row in rows)
+    assert any(row[1:3] == ["Benjamins", "-"] for row in rows)
     assert all(len(row) == 5 for row in rows)

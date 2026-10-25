@@ -79,7 +79,7 @@ class ReportSchedule:
             time=self.schedule.time,
             season=self.schedule.season,
             label=self.label,
-            description="Ação de Benjamins",
+            description="-",
             venue=self.schedule.venue,
             home_sort="",
             away_sort="",
