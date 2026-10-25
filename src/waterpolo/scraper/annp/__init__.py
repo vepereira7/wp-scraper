@@ -2,10 +2,9 @@
 
 from waterpolo.scraper.annp.client import ANNPClient
 from waterpolo.scraper.annp.domain import (
-    annp_polo_path,
+    annp_public_path,
     annp_season_bounds,
     annp_season_label,
-    annp_source_seasons,
     normalize_annp_season,
 )
 from waterpolo.scraper.annp.errors import (
@@ -30,10 +29,9 @@ __all__ = [
     "ANNPGame",
     "ANNPHTTPError",
     "ANNPResponseError",
-    "annp_polo_path",
+    "annp_public_path",
     "annp_season_bounds",
     "annp_season_label",
-    "annp_source_seasons",
     "filter_team_games",
     "map_annp_category",
     "map_annp_state",

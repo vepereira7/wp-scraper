@@ -167,14 +167,12 @@ ficheiro. Esta resolução é exclusiva do fluxo FPN.
 ## Cliente ANNP
 
 O adapter ANNP está em `src/waterpolo/scraper/annp/` e usa `httpx` para consultar
-`competicoes.php` e `calendario.php`. O site não expõe uma API JSON nem um ID de
-jogo no HTML público; a integração documenta e testa o identificador substituto
-estável usado nesse caso. Consulte [docs/annp.md](docs/annp.md) para endpoints,
-mapeamento de estados, seleção de escalão e limitações.
-
-A época lógica é independente do diretório da fonte. Para `2627`, o cliente tenta
-primeiro `provas2627` e usa temporariamente `provas2526` como fallback conhecido,
-validando sempre as datas como 2026/27.
+as páginas atuais `/polo/{YYYYYYYY}/calendario/{competition_id}`. O site não
+expõe uma API JSON nem um ID de jogo no HTML público; a integração documenta e
+testa o identificador substituto estável usado nesse caso.
+Consulte [docs/annp.md](docs/annp.md) para endpoints, mapeamento de estados,
+seleção de escalão, limitações e o comando separado `publish annp-schedule`
+para as ações de Benjamins. O relatório aceita esse JSON com `--schedule`.
 
 ## Roadmap
 

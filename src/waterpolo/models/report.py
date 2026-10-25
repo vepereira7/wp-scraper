@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, time
 
+from waterpolo.models.benjamins_schedule import BenjaminsScheduleEntry
 from waterpolo.models.match import Match
 
 MONTH_NAMES_PT = (
@@ -51,6 +53,67 @@ class ReportMatch:
             return "—"
         return f"{self.match.score_home}–{self.match.score_away}"
 
+    def as_entry(self) -> ReportEntry:
+        return ReportEntry(
+            date=self.match.date,
+            time=self.match.time,
+            season=self.match.season,
+            label=self.label,
+            description=f"{self.match.home} x {self.match.away}",
+            venue=self.match.location,
+            home_sort=self.match.home,
+            away_sort=self.match.away,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ReportSchedule:
+    """A Benjamins action associated with its report label."""
+
+    label: str
+    schedule: BenjaminsScheduleEntry
+
+    def as_entry(self) -> ReportEntry:
+        return ReportEntry(
+            date=self.schedule.date,
+            time=self.schedule.time,
+            season=self.schedule.season,
+            label=self.label,
+            description="Ação de Benjamins",
+            venue=self.schedule.venue,
+            home_sort="",
+            away_sort="",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ReportEntry:
+    """Presentation-only row shared by matches and actions."""
+
+    date: date
+    time: time | None
+    season: str
+    label: str
+    description: str
+    venue: str | None
+    home_sort: str
+    away_sort: str
+
+    @property
+    def display_date(self) -> str:
+        return self.date.strftime("%d/%m/%Y")
+
+    @property
+    def display_time(self) -> str:
+        return self.time.strftime("%H:%M") if self.time else "Por definir"
+
+    @property
+    def display_location(self) -> str:
+        return self.venue if self.venue is not None and self.venue.strip() else "Por definir"
+
+
+ReportItem = ReportMatch | ReportSchedule
+
 
 @dataclass(frozen=True, slots=True)
 class MonthGroup:
@@ -58,7 +121,7 @@ class MonthGroup:
 
     year: int
     month: int
-    matches: tuple[ReportMatch, ...]
+    matches: tuple[ReportItem, ...]
 
     @property
     def heading(self) -> str:

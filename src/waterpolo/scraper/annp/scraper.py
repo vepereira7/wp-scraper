@@ -1,4 +1,4 @@
-"""Pure HTML parsing, filtering, and Match normalization for ANNP."""
+"""Parse the current ANNP calendar HTML into the shared Match contract."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from waterpolo.models import (
     normalize_category,
 )
 from waterpolo.scraper.annp.domain import (
+    annp_public_path,
     annp_season_bounds,
     annp_season_label,
     normalize_annp_season,
@@ -28,22 +29,16 @@ from waterpolo.scraper.annp.errors import ANNPResponseError
 from waterpolo.scraper.annp.models import ANNPCompetition, ANNPGame
 
 _MONTHS = {
-    "jan": 1,
-    "fev": 2,
-    "mar": 3,
-    "abr": 4,
-    "mai": 5,
-    "jun": 6,
-    "jul": 7,
-    "ago": 8,
-    "set": 9,
-    "out": 10,
-    "nov": 11,
-    "dez": 12,
+    "jan": 1, "fev": 2, "mar": 3, "abr": 4, "mai": 5, "jun": 6,
+    "jul": 7, "ago": 8, "set": 9, "out": 10, "nov": 11, "dez": 12,
 }
-_EMPTY_CALENDAR_TEXT = "nao existem jogos definidos"
 _EMPTY_LOCATION_VALUES = frozenset({"", "-", "--", "---", "----", "-----", "—"})
-_EMPTY_TIME_VALUES = frozenset({"", "00:00", "----"})
+_EMPTY_TEAM_VALUES = frozenset({"-", "--", "---", "----", "-----", "—"})
+_EMPTY_TIME_VALUES = frozenset({"", "----"})
+_EMPTY_CALENDAR_TEXTS = frozenset({
+    "nao existem jogos definidos", "nao existem jogos", "sem jogos",
+})
+_COMPETITION_PATH = re.compile(r"^/polo/(\d{8})/calendario/(\d+)/?$")
 
 
 def _normalized_text(value: str | None) -> str:
@@ -54,137 +49,176 @@ def _normalized_text(value: str | None) -> str:
     return " ".join(without_marks.casefold().split())
 
 
-def parse_competitions(html: str) -> list[ANNPCompetition]:
-    """Parse competition IDs and real display names from the ANNP button fragment."""
+def parse_current_competitions(html: str, *, season: str) -> list[ANNPCompetition]:
+    """Read all competition IDs and names advertised for the requested season."""
     soup = BeautifulSoup(html, "lxml")
+    expected_years = annp_public_path(season).split("/")[2]
+    navs = soup.select("nav.competicoes")
+    if len(navs) != 1:
+        raise ANNPResponseError("ANNP calendar must contain one competition navigation")
+
     competitions: list[ANNPCompetition] = []
     seen_ids: set[str] = set()
-    for button in soup.select("button.btn-set2[value]"):
-        competition_id = str(button.get("value", "")).strip()
-        name = button.get_text(" ", strip=True)
-        if not competition_id or not name:
-            raise ANNPResponseError("ANNP competition button is missing value or name")
+    links = navs[0].select("a.btn-competicao")
+    if not links:
+        raise ANNPResponseError("ANNP calendar contains no competitions")
+    for link in links:
+        path = _COMPETITION_PATH.fullmatch(str(link.get("href", "")).strip())
+        name = link.get_text(" ", strip=True)
+        if path is None or path.group(1) != expected_years or not name:
+            raise ANNPResponseError("ANNP competition link has invalid season, ID or name")
+        competition_id = path.group(2)
         if competition_id in seen_ids:
-            raise ANNPResponseError(
-                f"ANNP competition response contains duplicate ID {competition_id!r}"
-            )
+            raise ANNPResponseError(f"ANNP contains duplicate competition ID {competition_id}")
         seen_ids.add(competition_id)
         competitions.append(
-            ANNPCompetition(
-                id=competition_id,
-                name=name,
-                category=name,
-                has_games=str(button.get("data-temjogos", "1")).strip() != "0",
-            )
+            ANNPCompetition(id=competition_id, name=name, category=name)
         )
-
-    if not competitions:
-        raise ANNPResponseError("ANNP competition response contains no competitions")
     return competitions
 
 
-def parse_calendar(
+def _validate_selected_competition(
+    soup: BeautifulSoup, season: str, competition: ANNPCompetition
+) -> None:
+    advertised = parse_current_competitions(str(soup), season=season)
+    matches = [item for item in advertised if item.id == competition.id]
+    if len(matches) != 1 or matches[0].name != competition.name:
+        raise ANNPResponseError(
+            f"ANNP calendar does not advertise competition {competition.id} "
+            f"as {competition.name!r}"
+        )
+    active = soup.select("nav.competicoes a.btn-competicao.ativo")
+    expected_href = f"{annp_public_path(season)}calendario/{competition.id}"
+    if (
+        len(active) != 1
+        or active[0].get("href") != expected_href
+        or active[0].get_text(" ", strip=True) != competition.name
+    ):
+        raise ANNPResponseError(
+            f"ANNP calendar does not confirm selected competition {competition.id}"
+        )
+    title = soup.select_one("title")
+    if title is not None and competition.name not in title.get_text(" ", strip=True):
+        raise ANNPResponseError("ANNP calendar title disagrees with selected competition")
+
+
+def parse_current_calendar(
     html: str,
     *,
     season: str,
     competition: ANNPCompetition,
     source_url: str,
 ) -> list[ANNPGame]:
-    """Parse a complete ANNP calendar fragment into source-specific games."""
-    normalized_season = normalize_annp_season(season)
+    """Parse every card after confirming the page belongs to the selected ID."""
+    logical_season = normalize_annp_season(season)
     soup = BeautifulSoup(html, "lxml")
-    cards = soup.select(".match-card")
-    if not cards:
-        if _EMPTY_CALENDAR_TEXT in _normalized_text(soup.get_text(" ", strip=True)):
+    _validate_selected_competition(soup, logical_season, competition)
+    sections = soup.select("section.seccao-calendario")
+    if len(sections) != 1:
+        raise ANNPResponseError("ANNP calendar must contain one calendar section")
+    section = sections[0]
+    days = section.select(".dia")
+    if not days:
+        page_text = _normalized_text(section.get_text(" ", strip=True))
+        if any(marker in page_text for marker in _EMPTY_CALENDAR_TEXTS):
             return []
-        raise ANNPResponseError("ANNP calendar response contains no match cards")
+        raise ANNPResponseError("ANNP calendar contains no match cards")
 
     occurrences: Counter[tuple[str, str]] = Counter()
-    season_start, season_end = annp_season_bounds(normalized_season)
+    season_start, season_end = annp_season_bounds(logical_season)
     games: list[ANNPGame] = []
-    for card in cards:
-        group = card.find_parent("div", class_="mb-10")
-        date_heading = group.select_one("h3") if isinstance(group, Tag) else None
-        if date_heading is None:
-            raise ANNPResponseError("ANNP match card is missing its date heading")
-
-        home, away = _parse_teams(card)
-        occurrence_key = (_normalized_text(home), _normalized_text(away))
-        occurrences[occurrence_key] += 1
-        occurrence = occurrences[occurrence_key]
-        game_id = _stable_game_id(
-            normalized_season,
-            competition.id,
-            home,
-            away,
-            occurrence,
-        )
-        score_home, score_away = _parse_score(card)
-        state_node = card.select_one(".match-status")
-        state = state_node.get_text(" ", strip=True) if state_node else None
-        status = map_annp_state(state)
-        if status in {MatchStatus.CANCELLED, MatchStatus.POSTPONED}:
-            score_home = score_away = None
-
-        game_date = _parse_date(date_heading.get_text(" ", strip=True))
+    for day in days:
+        date_nodes = day.select(":scope > .dia-titulo")
+        containers = day.select(":scope > .cartoes")
+        if len(date_nodes) != 1 or len(containers) != 1:
+            raise ANNPResponseError("ANNP calendar day has an unexpected structure")
+        cards = containers[0].select(":scope > article.cartao")
+        if not cards:
+            raise ANNPResponseError("ANNP calendar day contains no match cards")
+        game_date = _parse_date(date_nodes[0].get_text(" ", strip=True))
         if not season_start <= game_date <= season_end:
             raise ANNPResponseError(
-                f"ANNP returned date {game_date.isoformat()} outside requested season "
-                f"{normalized_season} ({season_start.isoformat()} to {season_end.isoformat()})"
+                f"ANNP returned date {game_date.isoformat()} outside requested "
+                f"season {logical_season}"
             )
-
-        try:
-            games.append(
-                ANNPGame(
-                    id=game_id,
-                    competition_id=competition.id,
-                    competition_name=competition.name,
-                    competition_category=competition.category,
-                    date=game_date,
-                    time=_parse_time(card),
-                    home_team_name=home,
-                    away_team_name=away,
-                    home_score=score_home,
-                    away_score=score_away,
-                    location=_parse_location(card),
-                    state=state,
-                    source_url=source_url,
+        for card in cards:
+            home, away = _parse_teams(card)
+            key = (_normalized_text(home), _normalized_text(away))
+            occurrences[key] += 1
+            game_id = _stable_game_id(
+                logical_season, competition.id, home, away, occurrences[key]
+            )
+            state = _one_text(card, ":scope > .estado", "state")
+            status = map_annp_state(state)
+            scores = _parse_score(_one_text(card, ".equipas > .resultado", "result"))
+            if status is MatchStatus.COMPLETED and scores[0] is None:
+                raise ANNPResponseError(f"Completed ANNP game {game_id} has no result")
+            if status is MatchStatus.SCHEDULED and scores[0] is not None:
+                raise ANNPResponseError(f"Scheduled ANNP game {game_id} has a result")
+            try:
+                games.append(
+                    ANNPGame(
+                        id=game_id,
+                        competition_id=competition.id,
+                        competition_name=competition.name,
+                        competition_category=competition.category,
+                        date=game_date,
+                        time=_parse_time(card),
+                        home_team_name=home,
+                        away_team_name=away,
+                        home_score=scores[0],
+                        away_score=scores[1],
+                        location=_parse_location(card),
+                        state=state,
+                        source_url=source_url,
+                    )
                 )
-            )
-        except ValidationError as exc:
-            raise ANNPResponseError(f"Invalid ANNP game {game_id}: {exc}") from exc
+            except ValidationError as exc:
+                raise ANNPResponseError(f"Invalid ANNP game {game_id}: {exc}") from exc
+    if len(section.select("article")) != len(games):
+        raise ANNPResponseError(
+            "ANNP calendar contains an article outside a valid day card group"
+        )
     return games
 
 
+def _one_text(card: Tag, selector: str, label: str) -> str:
+    nodes = card.select(selector)
+    if len(nodes) != 1:
+        raise ANNPResponseError(f"ANNP match card must contain exactly one {label}")
+    value = nodes[0].get_text(" ", strip=True)
+    if not value:
+        raise ANNPResponseError(f"ANNP match card contains an empty {label}")
+    return value
+
+
 def _parse_teams(card: Tag) -> tuple[str, str]:
-    teams = [
-        node.get_text(" ", strip=True)
-        for node in card.select(".teams .team .font-semibold")
-    ]
-    if len(teams) != 2 or not all(teams):
-        raise ANNPResponseError("ANNP match card must contain exactly two team names")
-    return teams[0], teams[1]
+    nodes = card.select(".equipas > .equipa")
+    if len(nodes) != 2:
+        raise ANNPResponseError("ANNP match card must contain exactly two teams")
+    teams = (
+        _one_text(nodes[0], ":scope > span", "home team"),
+        _one_text(nodes[1], ":scope > span", "away team"),
+    )
+    if any(team in _EMPTY_TEAM_VALUES for team in teams):
+        raise ANNPResponseError("ANNP match card contains a placeholder team")
+    return teams
 
 
-def _parse_score(card: Tag) -> tuple[int | None, int | None]:
-    score_node = card.select_one(".teams .score")
-    if score_node is None:
-        raise ANNPResponseError("ANNP match card is missing its score")
-    score = score_node.get_text(" ", strip=True)
-    match = re.fullmatch(r"(\d*)\s*:\s*(\d*)", score)
+def _parse_score(value: str) -> tuple[int | None, int | None]:
+    match = re.fullmatch(r"(\d*)\s*:\s*(\d*)", value)
     if match is None:
-        raise ANNPResponseError(f"Invalid ANNP score {score!r}")
+        raise ANNPResponseError(f"Invalid ANNP score {value!r}")
     home, away = match.groups()
     if not home and not away:
         return None, None
     if not home or not away:
-        raise ANNPResponseError(f"Incomplete ANNP score {score!r}")
+        raise ANNPResponseError(f"Incomplete ANNP score {value!r}")
     return int(home), int(away)
 
 
 def _parse_date(value: str) -> date:
-    normalized = _normalized_text(value)
-    match = re.fullmatch(r"(\d{1,2}) ([a-z]{3}) (\d{4})", normalized)
+    match = re.fullmatch(r"(\d{1,2}) ([a-z]{3}) (\d{4})", _normalized_text(value))
     if match is None or match.group(2) not in _MONTHS:
         raise ANNPResponseError(f"Invalid ANNP date {value!r}")
     try:
@@ -193,66 +227,51 @@ def _parse_date(value: str) -> date:
         raise ANNPResponseError(f"Invalid ANNP date {value!r}") from exc
 
 
+def _header(card: Tag) -> Tag:
+    headers = card.select(":scope > .cartao-topo")
+    if len(headers) != 1:
+        raise ANNPResponseError("ANNP match card must contain exactly one header")
+    header = headers[0]
+    if any(
+        node.name != "span" or not ({"local", "hora"} & set(node.get("class", [])))
+        for node in header.find_all(recursive=False)
+    ):
+        raise ANNPResponseError("ANNP match card has an unexpected header structure")
+    return header
+
+
 def _parse_time(card: Tag) -> time | None:
-    header = card.select_one(".match-header")
-    if header is None:
-        raise ANNPResponseError("ANNP match card is missing its header")
-
-    header_elements = header.find_all(recursive=False)
-    time_nodes = [
-        node
-        for node in header_elements
-        if node.name == "span" and "local-info" not in node.get("class", [])
-    ]
-    unexpected_nodes = [
-        node
-        for node in header_elements
-        if not (node.name == "span" and "local-info" in node.get("class", []))
-        and node not in time_nodes
-    ]
-    if unexpected_nodes or len(time_nodes) > 1:
-        raise ANNPResponseError("ANNP match card has an unexpected time structure")
-    if not time_nodes:
+    nodes = _header(card).select(":scope > span.hora")
+    if len(nodes) > 1:
+        raise ANNPResponseError("ANNP match card has multiple times")
+    if not nodes:
         return None
-
-    raw_value = time_nodes[0].get_text(" ", strip=True)
-    value = " ".join(raw_value.split())
-    if value.startswith("⏰"):
-        value = value.removeprefix("⏰").strip()
+    value = nodes[0].get_text(" ", strip=True)
     if value in _EMPTY_TIME_VALUES:
         return None
-
-    match = re.fullmatch(r"([0-9]{1,2}):([0-9]{1,2})", value)
+    match = re.fullmatch(r"(\d{1,2}):(\d{1,2})", value)
     if match is None:
-        raise ANNPResponseError(f"Invalid ANNP time {raw_value!r}")
+        raise ANNPResponseError(f"Invalid ANNP time {value!r}")
     try:
-        parsed_time = time(int(match.group(1)), int(match.group(2)))
+        return time(int(match.group(1)), int(match.group(2)))
     except ValueError as exc:
-        raise ANNPResponseError(f"Invalid ANNP time {raw_value!r}") from exc
-    return None if parsed_time == time.min else parsed_time
+        raise ANNPResponseError(f"Invalid ANNP time {value!r}") from exc
 
 
 def _parse_location(card: Tag) -> str | None:
-    node = card.select_one(".match-header .local-info span")
-    if node is None:
-        raise ANNPResponseError("ANNP match card is missing its location")
-    location = " ".join(node.get_text(" ", strip=True).split())
-    return None if location in _EMPTY_LOCATION_VALUES else location
+    nodes = _header(card).select(":scope > span.local")
+    if len(nodes) > 1:
+        raise ANNPResponseError("ANNP match card has multiple locations")
+    if not nodes:
+        return None
+    value = " ".join(nodes[0].get_text(" ", strip=True).split())
+    return None if value in _EMPTY_LOCATION_VALUES else value
 
 
 def _stable_game_id(
-    season: str,
-    competition_id: str,
-    home: str,
-    away: str,
-    occurrence: int,
+    season: str, competition_id: str, home: str, away: str, occurrence: int
 ) -> str:
-    """Derive identity only from fields invariant under schedule/result updates.
-
-    ANNP does not expose its database game ID in the public HTML. The ordinal
-    disambiguates repeated fixtures with the same home and away teams without
-    incorporating mutable date, time, location, score, or state fields.
-    """
+    """Keep the project's season/competition/teams/occurrence identity algorithm."""
     identity = ":".join(
         (
             season,
@@ -262,39 +281,33 @@ def _stable_game_id(
             str(occurrence),
         )
     )
-    digest = sha256(identity.encode("utf-8")).hexdigest()[:16]
-    return f"{season}-{competition_id}-{digest}"
+    return f"{season}-{competition_id}-{sha256(identity.encode('utf-8')).hexdigest()[:16]}"
 
 
 def map_annp_state(state: str | None) -> MatchStatus:
-    """Map ANNP Portuguese lifecycle labels to the shared status enum."""
+    """Map the lifecycle labels found on the current public calendar."""
+    mapping = {
+        "agendado": MatchStatus.SCHEDULED,
+        "finalizado": MatchStatus.COMPLETED,
+    }
     normalized = _normalized_text(state)
-    if normalized in {"nao iniciado", "agendado", "por realizar"}:
-        return MatchStatus.SCHEDULED
-    if normalized in {"finalizado", "terminado", "concluido"}:
-        return MatchStatus.COMPLETED
-    if normalized in {"adiado", "postponed"}:
-        return MatchStatus.POSTPONED
-    if normalized in {"cancelado", "anulado", "cancelled"}:
-        return MatchStatus.CANCELLED
-    return MatchStatus.UNKNOWN
+    if normalized not in mapping:
+        raise ANNPResponseError(f"Unknown ANNP match state {state!r}")
+    return mapping[normalized]
 
 
 def map_annp_category(value: str) -> MatchCategory:
-    """Normalize a real ANNP competition label through the shared mapping."""
     return normalize_category(value)
 
 
 def filter_team_games(games: Sequence[ANNPGame], team: str) -> list[ANNPGame]:
-    """Return games whose exact normalized home or away name matches ``team``."""
     requested = _normalized_text(team)
     if not requested:
         raise ValueError("team must not be empty")
     return [
         game
         for game in games
-        if requested
-        in {
+        if requested in {
             _normalized_text(game.home_team_name),
             _normalized_text(game.away_team_name),
         }
@@ -302,7 +315,7 @@ def filter_team_games(games: Sequence[ANNPGame], team: str) -> list[ANNPGame]:
 
 
 def to_matches(games: Sequence[ANNPGame], *, season: str) -> list[Match]:
-    """Convert ANNP games to the same source-independent Match used by FPN."""
+    """Convert source games to the unchanged model used by JSON and ICS."""
     normalized_season = annp_season_label(season)
     return [
         Match(
@@ -315,11 +328,7 @@ def to_matches(games: Sequence[ANNPGame], *, season: str) -> list[Match]:
             home=game.home_team_name,
             away=game.away_team_name,
             date=game.date,
-            # ANNP uses known empty values as placeholders for a time that has
-            # not yet been scheduled. Keep this source-specific semantic out
-            # of the shared model and exporters. Retain the time.min fallback
-            # for ANNPGame values constructed outside the HTML parser.
-            time=None if game.time in {None, time.min} else game.time,
+            time=game.time,
             location=game.location,
             score_home=game.home_score,
             score_away=game.away_score,

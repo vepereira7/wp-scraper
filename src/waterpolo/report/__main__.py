@@ -12,7 +12,9 @@ from pathlib import Path
 from waterpolo.report.loader import (
     CalendarArgument,
     load_calendar,
+    load_schedule,
     parse_calendar_argument,
+    parse_schedule_argument,
 )
 from waterpolo.services.report_renderer import write_html, write_pdf
 
@@ -32,6 +34,13 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="LABEL=PATH",
         help="calendário com o label a apresentar; pode ser repetido",
     )
+    parser.add_argument(
+        "--schedule",
+        action="append",
+        type=parse_schedule_argument,
+        metavar="LABEL=PATH",
+        help="schedule de ações Benjamins; pode ser repetido",
+    )
     parser.add_argument("--html", type=Path, help="ficheiro HTML de destino")
     parser.add_argument("--pdf", type=Path, help="ficheiro PDF de destino")
     return parser
@@ -40,6 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
 def run_report(
     calendars: list[CalendarArgument],
     *,
+    schedules: list[CalendarArgument] | None = None,
     html_output: Path | None,
     pdf_output: Path | None,
 ) -> None:
@@ -48,7 +58,10 @@ def run_report(
     for label, path in calendars:
         LOGGER.info("Loading %s: %s", label, path)
         matches.extend(load_calendar(label, path))
-    LOGGER.info("Loaded %d matches", len(matches))
+    for label, path in schedules or []:
+        LOGGER.info("Loading schedule %s: %s", label, path)
+        matches.extend(load_schedule(label, path))
+    LOGGER.info("Loaded %d report entries", len(matches))
 
     if html_output is not None:
         LOGGER.info("Rendering HTML: %s", html_output)
@@ -81,7 +94,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     try:
-        run_report(args.calendar, html_output=args.html, pdf_output=args.pdf)
+        run_report(
+            args.calendar,
+            schedules=args.schedule,
+            html_output=args.html,
+            pdf_output=args.pdf,
+        )
     except Exception as exc:  # noqa: BLE001 -- CLI errors must produce a nonzero exit code.
         LOGGER.error("%s", exc)
         return 1

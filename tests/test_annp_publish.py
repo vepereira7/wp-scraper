@@ -13,8 +13,8 @@ def make_game(
     game_id: str = "2627-1-stable",
     *,
     game_date: date = date(2026, 11, 1),
-    game_time: time = time(15, 0),
-    home: str = "CFP B",
+    game_time: time | None = time(15, 0),
+    home: str = "CFP",
     away: str = "FOCA",
 ) -> ANNPGame:
     return ANNPGame(
@@ -27,11 +27,8 @@ def make_game(
         home_team_name=home,
         away_team_name=away,
         location="Fluvial",
-        state="Não iniciado",
-        source_url=(
-            "https://provas.annp.pt/provas2526/polo/calendario.php"
-            "?competicao=1&temjogos=1"
-        ),
+        state="Agendado",
+        source_url="https://provas.annp.pt/polo/20262027/calendario/1",
     )
 
 
@@ -111,7 +108,7 @@ def test_annp_unknown_time_can_be_published_then_updated_in_place(
     FakeANNPClient.games = [
         make_game(
             game_date=date(2026, 12, 12),
-            game_time=time(0, 0),
+            game_time=None,
             home="PPA",
         )
     ]

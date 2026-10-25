@@ -1,86 +1,106 @@
 # Fonte ANNP
 
-A integração ANNP é um adapter para o mesmo pipeline usado pela FPN. Produz
-`list[Match]`; os exporters JSON/ICS, validação, staging, deteção de duplicados,
-publicação atómica, rollback, logging e exit codes são partilhados.
+A integração ANNP é um adapter para o modelo `Match` partilhado. A CLI, o
+production runner e os exporters JSON/ICS continuam a usar o mesmo contrato.
 
-## Fonte HTTP
+## Plataforma atual
 
-A página pública carrega fragmentos HTML server-side por jQuery. Não foi
-encontrado um endpoint JSON público. O cliente de produção usa `httpx`, sem
-browser, nestes endpoints físicos:
+A época lógica `2627` corresponde a `/polo/20262027/`. A resolução é genérica:
+`2526 → 20252026`, `2627 → 20262027`, `2728 → 20272028`.
 
-- `GET /provas{YYZZ}/polo/competicoes.php?opcao=1`
-- `GET /provas{YYZZ}/polo/calendario.php?competicao={id}&temjogos={0|1}`
+O cliente consulta apenas:
 
-O primeiro endpoint fornece os IDs e nomes reais das competições. O segundo
-fornece data, hora, local, equipas, resultado e estado em cartões HTML. A CLI
-aceita o nome real com `--category` ou, preferencialmente, o ID estável com
-`--competition-id`.
+- `GET /polo/{YYYYYYYY}/calendario`, para descobrir os IDs e nomes;
+- `GET /polo/{YYYYYYYY}/calendario/{competition_id}`, para os jogos.
+
+Na consulta de 25 de outubro de 2026, a navegação publicou:
+
+| ID | Competição | Categoria | Género |
+| --- | --- | --- | --- |
+| 1 | Juniores Masculinos | Juniores | Masculino |
+| 2 | Juvenis Masculinos | Juvenis | Masculino |
+| 3 | Infantis Mistos | Infantis | Misto |
+| 4 | Cadetes Mistos | Cadetes | Misto |
+| 7 | Benjamins Mistos | Benjamins | Misto |
+
+A página inicial liga a Calendário, Resultados e Classificações. O calendário é
+HTML renderizado no servidor. O JavaScript faz navegação progressiva por
+`?formato=parcial`, que devolve o mesmo painel HTML. Não foi observada uma API
+JSON. Os cartões e o HTML parcial não publicam um ID canónico de jogo, jornada
+ou fase. A tabela de Resultados publica a jornada e um número não único.
+
+O parser confirma que o link ativo em `nav.competicoes` tem o ID, URL e nome
+esperados. Lê `section.seccao-calendario`, os grupos `.dia` e
+`.dia-titulo`, e cada `article.cartao`. Em cada cartão usa
+`.cartao-topo .hora`, `.cartao-topo .local`, `.equipas > .equipa`,
+`.equipas > .resultado` e `.estado`. Datas explícitas incluem o ano; a
+validação restringe os jogos a julho–junho da época solicitada.
+
+O único marcador de hora indefinida observado foi `----`. Hora ausente ou
+vazia também resulta em `time=None`; valores numéricos `H:M`, `H:MM`,
+`HH:M` e `HH:MM` são normalizados pelo modelo. `00:00`, se publicado, é
+interpretado como meia-noite real. O local `-----` torna-se `location=None`.
+O score `:` significa ausência de resultado; `0 : 0` é válido quando o
+estado é `Finalizado`, como observado em Cadetes.
+
+Em Benjamins, há cartões ainda publicados com `-----` em ambas as equipas.
+São incompletos e o parser rejeita-os explicitamente. A página de Resultados
+inclui colunas `Jorn.` e `N.º`, mas os cartões de Calendário não as incluem.
+O `N.º` repete-se em jogos distintos de Juniores e Cadetes; em Benjamins todos
+os jogos têm `0`. Não serve como identificador canónico único.
+
+Os estados observados são `Agendado → SCHEDULED` e
+`Finalizado → COMPLETED`. Um estado novo, score incompatível, cartão incompleto,
+HTML inesperado, HTTP 404/5xx ou erro de rede faz a execução falhar.
+
+## CLI e contrato
 
 ```console
 uv run python -m waterpolo.main publish annp \
   --season 2627 \
   --team FOCA \
   --competition-id 1 \
-  --json-output data/published_calendars/annp-2627-juniores-foca.json \
-  --ics-output data/published_calendars/annp-2627-juniores-foca.ics
+  --json-output /tmp/juniores.json \
+  --ics-output /tmp/juniores.ics
 ```
 
-Cada execução seleciona exatamente uma competição, pelo que os escalões não são
-misturados. O calendário completo dessa competição é obtido uma vez, o filtro
-de equipa é aplicado localmente e a normalização também ocorre uma vez.
+O filtro de equipa compara nomes completos após normalização de maiúsculas,
+acentos e espaços. O resultado é convertido em `list[Match]`. O JSON mantém os
+campos e tipos do modelo comum; uma hora ausente é `null`. O exporter ICS comum
+gera nesse caso um VEVENT de data inteira.
 
-## Identidade e estados
+Sem ID canónico público, `external_id` usa o algoritmo existente: época lógica,
+ID da competição, nomes de casa/fora normalizados e número da ocorrência para
+essa orientação. Data, hora, local, score e estado não entram na identidade.
+O UID ICS continua a ser `ANNP-{external_id}@waterpolo`. Se a ordem relativa
+de dois jogos com as mesmas equipas e orientação mudar, os números de ocorrência
+podem mudar de associação; a plataforma não fornece um identificador para
+resolver esse risco sem rever o contrato.
 
-O HTML público não expõe o ID interno do jogo. O `external_id` ANNP é portanto
-um identificador substituto determinístico baseado em época, ID da competição,
-equipas casa/fora e número da ocorrência entre as mesmas equipas. Não inclui
-data, hora, local, resultado ou estado, mantendo-se estável quando esses campos
-mudam. Uma alteração da ordem relativa de duas partidas repetidas com as mesmas
-equipas e orientação é a limitação residual deste método.
+## Ações de Benjamins
 
-Os estados observados são mapeados para a enumeração partilhada:
+A competição 7 publica uma sequência de ações com equipas `-----`. Estes
+cartões não geram `Match` e não entram no import de calendários do WP Stats.
+O comando separado lê a página atual, confirma a competição e gera
+`BenjaminsScheduleEntry`:
 
-- `Não iniciado`, `Agendado`, `Por realizar` → `SCHEDULED`;
-- `Finalizado`, `Terminado`, `Concluído` → `COMPLETED`;
-- `Adiado` → `POSTPONED`;
-- `Cancelado`, `Anulado` → `CANCELLED`;
-- outros → `UNKNOWN`.
+```console
+uv run python -m waterpolo.main publish annp-schedule \
+  --season 2627 \
+  --competition-id 7 \
+  --json-output /tmp/benjamins.json \
+  --ics-output /tmp/benjamins.ics
+```
 
-O UID ICS é sempre `ANNP-{external_id}@waterpolo`.
+`--ics-output` é opcional. O JSON contém `source`, `season`,
+`competition_id`, `competition_name`, `entry_count` e `entries`. Cada
+entrada contém apenas `external_id`, `date`, `time` e `venue`; hora e
+local ausentes são `null`. A hora é serializada como `HH:MM`. O ICS usa
+`SUMMARY:Ação de Benjamins`, omite `LOCATION` quando não há local e cria um
+evento de data inteira quando não há hora.
 
-Na ANNP, `00:00`, `----` e a ausência do elemento de hora ou do seu conteúdo
-são representações que significam que a hora ainda não foi definida. O adapter
-converte exclusivamente estes casos conhecidos para `Match.time=None`; horas
-reais permanecem intactas, valores não vazios desconhecidos continuam a ser
-rejeitados e a regra não é aplicada à FPN. O JSON contém `"time": null` e o ICS
-comum produz um VEVENT de data (`DTSTART;VALUE=DATE` e `DTEND;VALUE=DATE` no dia
-seguinte), preservando o mesmo UID quando a fonte publicar posteriormente uma
-hora real.
-
-As horas numéricas aceitam um ou dois dígitos em cada componente (`H:M`,
-`H:MM`, `HH:M` ou `HH:MM`), conforme observado no valor público `9:0`. Horas e
-minutos continuam limitados aos intervalos `0..23` e `0..59`.
-
-## Época lógica e source path
-
-`--season` representa a época lógica do jogo e é a única época usada no JSON,
-no `external_id` e no UID. O diretório físico da ANNP é apenas routing HTTP e
-nunca participa na identidade.
-
-Para a época lógica `2627`, o cliente tenta por ordem:
-
-1. `/provas2627/polo/`;
-2. `/provas2526/polo/`, fallback conhecido enquanto a ANNP mantiver os dados
-   2026/27 no diretório anterior.
-
-Se a ANNP corrigir o diretório, os mesmos jogos mantêm `external_id` e UID. Só o
-`source_url` passa a refletir o novo path realmente usado.
-
-## Proteção de época
-
-Uma época lógica `YYZZ` corresponde ao intervalo inclusivo de 1 de julho do
-primeiro ano a 30 de junho do segundo. Para `2627`, apenas datas entre
-`2026-07-01` e `2027-06-30` são aceites, independentemente do source path. Datas
-fora desse intervalo são rejeitadas como resposta inválida.
+Não há ID canónico único na página pública. A identidade de ação é
+`{season}-7-{YYYYMMDD}-{occurrence}`, com a ocorrência contada por data na
+ordem dos cartões. Alterações de hora ou local mantêm o ID; uma mudança de data
+cria outro ID. A troca de ordem entre ações da mesma data pode trocar os seus
+números de ocorrência.

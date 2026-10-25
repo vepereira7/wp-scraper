@@ -9,11 +9,22 @@ uv run python -m waterpolo.report \
   --calendar "Seniores=data/exports/fpn_po01_26-27_foca.json" \
   --calendar "Juniores=data/exports/annp_2627_juniores_foca.json" \
   --calendar "Juvenis=data/exports/annp_2627_juvenis_foca.json" \
+  --calendar "Infantis=data/exports/annp_2627_infantis_foca.json" \
+  --schedule "Benjamins=data/exports/annp_2627_benjamins_schedule.json" \
   --html data/reports/calendario-foca-2627.html \
   --pdf data/reports/calendario-foca-2627.pdf
 ```
 
-`--calendar` usa o formato `LABEL=PATH` e pode ser repetido. É obrigatório
+`--calendar` usa o formato `LABEL=PATH` e pode ser repetido. `--schedule`
+aceita o JSON próprio das ações de Benjamins, também no formato `LABEL=PATH`.
+O relatório ordena jogos e ações cronologicamente, com horas indefinidas após
+horas conhecidas do mesmo dia. Quando há schedules, a tabela apresenta
+`Data | Escalão | Jogo/Ação | Hora | Local`; as ações aparecem como
+`Ação de Benjamins`, sem equipas fictícias. Sem schedules, o layout atual dos
+jogos é preservado. Hora ou local indefinido continua a aparecer como
+`Por definir`.
+
+É obrigatório
 indicar pelo menos um calendário e um output. `--html` e `--pdf` podem ser usados
 em conjunto ou separadamente. Quando ambos são pedidos, o PDF é convertido a
 partir do mesmo ficheiro HTML acabado de escrever.

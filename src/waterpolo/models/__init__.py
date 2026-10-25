@@ -1,5 +1,6 @@
 """Public data models."""
 
+from waterpolo.models.benjamins_schedule import BenjaminsScheduleEntry
 from waterpolo.models.category import (
     MatchCategory,
     format_match_category,
@@ -12,6 +13,7 @@ from waterpolo.models.match import (
 )
 
 __all__ = [
+    "BenjaminsScheduleEntry",
     "Match",
     "MatchCategory",
     "MatchSource",

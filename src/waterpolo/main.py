@@ -13,6 +13,12 @@ from waterpolo.scraper.annp import ANNPClient
 from waterpolo.scraper.annp.scraper import to_matches as annp_to_matches
 from waterpolo.scraper.fpn import FPNArenaClient
 from waterpolo.scraper.fpn.scraper import to_matches as fpn_to_matches
+from waterpolo.services.benjamins_schedule import (
+    export_benjamins_ics,
+    export_benjamins_json,
+    schedule_uid,
+    validate_benjamins_json,
+)
 from waterpolo.services.ics_export import export_matches_ics, match_uid
 from waterpolo.services.json_export import export_matches_json
 from waterpolo.services.run_logger import RunLogger
@@ -53,6 +59,13 @@ def build_parser() -> argparse.ArgumentParser:
     annp_selector.add_argument("--competition-id")
     publish_annp.add_argument("--json-output", required=True, type=Path)
     publish_annp.add_argument("--ics-output", required=True, type=Path)
+    publish_schedule = publish_sources.add_parser(
+        "annp-schedule", help="publicar ações de Benjamins ANNP"
+    )
+    publish_schedule.add_argument("--season", required=True)
+    publish_schedule.add_argument("--competition-id", required=True)
+    publish_schedule.add_argument("--json-output", required=True, type=Path)
+    publish_schedule.add_argument("--ics-output", type=Path)
     return parser
 
 
@@ -220,6 +233,83 @@ def publish_annp(
     )
 
 
+def publish_annp_schedule(
+    season: str,
+    competition_id: str,
+    json_output: Path,
+    ics_output: Path | None = None,
+    *,
+    log_dir: Path | None = None,
+    command: str | None = None,
+) -> int:
+    """Publish Benjamins actions through their own validated output contract."""
+    command = command or (
+        f"python -m waterpolo.main publish annp-schedule --season {season} "
+        f"--competition-id {competition_id} --json-output {json_output}"
+    )
+    logger = RunLogger(
+        log_dir or RUN_LOG_DIR,
+        command=command,
+        team="Benjamins",
+        output_format="json+ics" if ics_output else "json",
+        source="ANNP-SCHEDULE",
+    )
+    details = [
+        f"Época: {season}",
+        f"ID da competição: {competition_id}",
+        f"JSON: {json_output}",
+        f"ICS: {ics_output or '(não pedido)'}",
+    ]
+    staged_json: Path | None = None
+    staged_ics: Path | None = None
+    try:
+        if json_output.suffix.casefold() != ".json":
+            raise ValueError("Output JSON requer extensão .json")
+        if ics_output is not None:
+            if ics_output.suffix.casefold() != ".ics":
+                raise ValueError("Output ICS requer extensão .ics")
+            if json_output.resolve() == ics_output.resolve():
+                raise ValueError("JSON e ICS têm de ter destinos diferentes")
+        with ANNPClient() as client:
+            entries = client.get_benjamins_schedule(
+                season, competition_id=competition_id
+            )
+        payload = export_benjamins_json(entries)
+        staged_json = create_staged_path(json_output)
+        staged_json.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        validate_benjamins_json(json.loads(staged_json.read_text(encoding="utf-8")))
+        if ics_output is not None:
+            staged_ics = create_staged_path(ics_output)
+            export_benjamins_ics(entries, staged_ics)
+            validate_ics_file(
+                staged_ics,
+                expected_uids={schedule_uid(entry) for entry in entries},
+                expected_event_count=len(entries),
+            )
+            publish_staged_pair(staged_json, json_output, staged_ics, ics_output)
+        else:
+            publish_staged_file(staged_json, json_output)
+    except Exception as exc:  # noqa: BLE001 -- CLI must log failure and return nonzero.
+        logger.error(exc)
+        logger.finish(status="ERROR", details=details)
+        return 1
+    finally:
+        if staged_json is not None:
+            staged_json.unlink(missing_ok=True)
+        if staged_ics is not None:
+            staged_ics.unlink(missing_ok=True)
+
+    logger.info(
+        f"Fonte: ANNP schedule\nÉpoca: {season}\nID da competição: {competition_id}\n"
+        f"Nº ações: {len(entries)}\nJSON: {json_output}\nICS: {ics_output or '(não pedido)'}"
+    )
+    logger.finish(status="SUCCESS", details=[*details, f"Nº ações: {len(entries)}"])
+    return 0
+
+
 def _publish_matches(
     *,
     source: MatchSource,
@@ -316,6 +406,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.ics_output,
             category=args.category,
             competition_id=args.competition_id,
+            command=" ".join(
+                sys.argv if argv is None else ["python", "-m", "waterpolo.main", *argv]
+            ),
+        )
+    if args.command == "publish" and args.source == "annp-schedule":
+        return publish_annp_schedule(
+            args.season,
+            args.competition_id,
+            args.json_output,
+            args.ics_output,
             command=" ".join(
                 sys.argv if argv is None else ["python", "-m", "waterpolo.main", *argv]
             ),

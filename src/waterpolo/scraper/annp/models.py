@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class ANNPCompetition(BaseModel):
-    """A competition advertised by ``competicoes.php``."""
+    """A competition advertised by an ANNP public calendar page."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -18,7 +18,7 @@ class ANNPCompetition(BaseModel):
 
 
 class ANNPGame(BaseModel):
-    """A game parsed from one ``calendario.php`` match card."""
+    """A game parsed from one ANNP public calendar card."""
 
     model_config = ConfigDict(frozen=True)
 
